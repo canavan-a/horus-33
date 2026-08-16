@@ -11,7 +11,9 @@
 #include <vector>
 
 #include "args.h"
+#include "config_file.h"
 #include "detector.h"
+#include "device_link.h"
 #include "error.h"
 #include "frame_sink.h"
 #include "h264_sink.h"
@@ -20,7 +22,6 @@
 #include "pipeline.h"
 #include "serial_port.h"
 #include "track_message.h"
-#include "track_sink.h"
 #include "v4l2_device.h"
 
 namespace capture_eye {
@@ -130,11 +131,11 @@ extern "C" void handle_interrupt(int) {
   }
 
   if (config.serial.enabled) {
-    auto serial = make_serial_track_sink(config.serial);
+    auto serial = make_serial_device_link(config.serial);
     if (!serial) return std::unexpected(serial.error());
-    stages.track_sink = std::move(*serial);
+    stages.device_link = std::move(*serial);
   } else {
-    stages.track_sink = make_stdout_track_sink();
+    stages.device_link = make_stdout_device_link();
   }
 
   // The encoder needs the real decoded frame size, which is only known once the
@@ -170,22 +171,48 @@ extern "C" void handle_interrupt(int) {
   return 0;
 }
 
+// Layers a config file between the built-in defaults and the parsed flags.
+// parse_args already resolved inv.config assuming no file was given (args.cpp
+// is pure — it never touches the filesystem), so when --config is present
+// that resolution has to be redone with the file layer in the middle:
+// defaults < --config FILE < flags.
+[[nodiscard]] Result<AppConfig> resolve_config(const Invocation& inv) {
+  if (!inv.config_file.has_value()) return inv.config;
+
+  const auto file_overlay = load_config_file(*inv.config_file);
+  if (!file_overlay) return std::unexpected(file_overlay.error());
+
+  const AppConfig merged = merge(AppConfig{}, *file_overlay, inv.overlay);
+  if (const auto ok = validate(merged); !ok) return std::unexpected(ok.error());
+  return merged;
+}
+
 [[nodiscard]] Result<int> run(const Invocation& inv) {
   switch (inv.command) {
     case Command::help:
       std::fputs(usage().c_str(), stdout);
       return 0;
 
-    case Command::list_formats:
-      return list_formats(inv.config);
+    case Command::list_formats: {
+      const auto config = resolve_config(inv);
+      if (!config) return std::unexpected(config.error());
+      return list_formats(*config);
+    }
 
-    case Command::detect_image:
-      return detect_image(inv);
+    case Command::detect_image: {
+      const auto config = resolve_config(inv);
+      if (!config) return std::unexpected(config.error());
+      Invocation resolved = inv;
+      resolved.config = *config;
+      return detect_image(resolved);
+    }
 
     case Command::dump_model_io: {
+      const auto config = resolve_config(inv);
+      if (!config) return std::unexpected(config.error());
       const auto cache_root = default_cache_root();
       if (!cache_root) return std::unexpected(cache_root.error());
-      const auto model = ensure_model(inv.config.model, *cache_root);
+      const auto model = ensure_model(config->model, *cache_root);
       if (!model) return std::unexpected(model.error());
 
       const auto description = describe_model_io(*model);
@@ -194,8 +221,11 @@ extern "C" void handle_interrupt(int) {
       return 0;
     }
 
-    case Command::run:
-      return run_pipeline(inv.config);
+    case Command::run: {
+      const auto config = resolve_config(inv);
+      if (!config) return std::unexpected(config.error());
+      return run_pipeline(*config);
+    }
   }
   return 0;
 }

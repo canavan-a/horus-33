@@ -20,12 +20,21 @@ enum class Command {
 
 struct Invocation {
   Command command = Command::run;
+  // Fully resolved: AppConfig defaults with the parsed flags layered on top,
+  // already validated. Correct as-is when no --config file is given.
   AppConfig config;
+  // The same flags, unmerged. When --config is also given, the caller must
+  // redo the merge as merge(AppConfig{}, file_overlay, overlay) — a config
+  // file sits *between* defaults and flags, so `config` above (which never
+  // saw the file) is not the right value to use in that case.
+  ConfigOverlay overlay;
+  std::optional<std::filesystem::path> config_file;  // --config PATH
   std::filesystem::path image;  // for detect_image
 };
 
 // Pure: no filesystem, no environment, no I/O. Takes the argument list without
-// argv[0].
+// argv[0]. --config's *path* is recorded but never opened here — parse_args
+// does not touch the filesystem regardless of what flags are given.
 [[nodiscard]] Result<Invocation> parse_args(std::span<const std::string_view> args);
 
 [[nodiscard]] std::string usage();

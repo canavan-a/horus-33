@@ -57,6 +57,10 @@ std::string usage() {
 
 Usage: capture-eye [options]
 
+Config:
+  --config PATH         load defaults from a JSON file (see docs/config.md);
+                         precedence is: built-in defaults < --config < flags
+
 Camera:
   --device PATH        video device (default /dev/video0)
   --size WxH           capture resolution (default 1280x720)
@@ -64,6 +68,8 @@ Camera:
   --fps N              frame rate (default 60)
   --decode-scale N     JPEG decode downscale: 1, 2 or 4 (default 1)
   --loose-format       accept whatever the driver grants instead of failing
+  --flip-h             mirror the frame horizontally (mount correction)
+  --flip-v             flip the frame vertically (mount correction)
 
 Model:
   --model PATH         use this .onnx file; never fetch
@@ -86,6 +92,13 @@ Serial:
   --no-serial          print track messages to stdout instead
   --track-seq          include seq so the device acks (debugging only)
 
+Control relay:
+  --control-socket PATH   listen here for other processes to send device
+                           commands (describe/set/ping) through capture-eye;
+                           off unless given, since only one process may hold
+                           the serial port
+  --control-max-clients N max simultaneous relay clients (default 8)
+
 Output:
   --preview            show an annotated preview window
   --snapshot PATH      periodically write the annotated frame to a JPEG
@@ -104,6 +117,7 @@ Modes:
 
 Result<Invocation> parse_args(std::span<const std::string_view> args) {
   Invocation inv;
+  ConfigOverlay& o = inv.overlay;
 
   // Returns the value belonging to a flag, or an error if it is missing.
   std::size_t i = 0;
@@ -137,17 +151,22 @@ Result<Invocation> parse_args(std::span<const std::string_view> args) {
       continue;
     }
 
-    if (arg == "--device") {
+    if (arg == "--config") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
-      inv.config.capture.device = *v;
+      inv.config_file = *v;
+
+    } else if (arg == "--device") {
+      const auto v = value_for(arg);
+      if (!v) return std::unexpected(v.error());
+      o.capture.device = *v;
     } else if (arg == "--size") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
       const auto size = parse_size(*v);
       if (!size) return std::unexpected(size.error());
-      inv.config.capture.width = size->first;
-      inv.config.capture.height = size->second;
+      o.capture.width = size->first;
+      o.capture.height = size->second;
     } else if (arg == "--fourcc") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
@@ -156,111 +175,122 @@ Result<Invocation> parse_args(std::span<const std::string_view> args) {
                     std::format("--fourcc: expected 4 characters, got '{}'", *v));
       }
       const char code[5] = {(*v)[0], (*v)[1], (*v)[2], (*v)[3], '\0'};
-      inv.config.capture.fourcc = fourcc_of(code);
+      o.capture.fourcc = fourcc_of(code);
     } else if (arg == "--fps") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
       const auto fps = parse_int(arg, *v);
       if (!fps) return std::unexpected(fps.error());
-      if (*fps <= 0) return fail(ErrorCode::config_invalid, "--fps: must be positive");
-      inv.config.capture.fps = *fps;
+      o.capture.fps = *fps;
     } else if (arg == "--decode-scale") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
       const auto scale = parse_int(arg, *v);
       if (!scale) return std::unexpected(scale.error());
-      if (*scale != 1 && *scale != 2 && *scale != 4) {
-        return fail(ErrorCode::config_invalid, "--decode-scale: expected 1, 2 or 4");
-      }
-      inv.config.capture.decode_scale = *scale;
+      o.capture.decode_scale = *scale;
     } else if (arg == "--loose-format") {
-      inv.config.capture.strict_format = false;
+      o.capture.strict_format = false;
+    } else if (arg == "--flip-h") {
+      o.capture.flip_horizontal = true;
+    } else if (arg == "--flip-v") {
+      o.capture.flip_vertical = true;
 
     } else if (arg == "--model") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
-      inv.config.model.path = *v;
+      o.model.path = *v;
     } else if (arg == "--model-variant") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
-      inv.config.model.variant = *v;
+      o.model.variant = std::string{*v};
     } else if (arg == "--model-url") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
-      inv.config.model.url = *v;
+      o.model.url = std::string{*v};
     } else if (arg == "--model-sha") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
-      inv.config.model.sha256 = *v;
+      o.model.sha256 = std::string{*v};
     } else if (arg == "--allow-unpinned") {
-      inv.config.model.allow_unpinned = true;
+      o.model.allow_unpinned = true;
     } else if (arg == "--offline") {
-      inv.config.model.offline = true;
+      o.model.offline = true;
 
     } else if (arg == "--conf") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
       const auto conf = parse_float(arg, *v);
       if (!conf) return std::unexpected(conf.error());
-      if (*conf < 0.0f || *conf > 1.0f) {
-        return fail(ErrorCode::config_invalid, "--conf: must be within [0, 1]");
-      }
-      inv.config.inference.conf_threshold = *conf;
+      o.inference.conf_threshold = *conf;
     } else if (arg == "--intra-threads") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
       const auto threads = parse_int(arg, *v);
       if (!threads) return std::unexpected(threads.error());
-      if (*threads < 1) return fail(ErrorCode::config_invalid, "--intra-threads: must be >= 1");
-      inv.config.inference.intra_op_threads = *threads;
+      o.inference.intra_op_threads = *threads;
     } else if (arg == "--fake-detector") {
-      inv.config.inference.fake = true;
+      o.inference.fake = true;
 
     } else if (arg == "--policy") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
       const auto policy = parse_policy(*v);
       if (!policy) return std::unexpected(policy.error());
-      inv.config.tracking.policy = *policy;
+      o.tracking.policy = *policy;
 
     } else if (arg == "--serial") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
-      inv.config.serial.port = *v;
+      o.serial.port = *v;
     } else if (arg == "--no-serial") {
-      inv.config.serial.enabled = false;
+      o.serial.enabled = false;
     } else if (arg == "--track-seq") {
-      inv.config.serial.send_seq = true;
+      o.serial.send_seq = true;
+
+    } else if (arg == "--control-socket") {
+      const auto v = value_for(arg);
+      if (!v) return std::unexpected(v.error());
+      o.ingress.socket_path = *v;
+    } else if (arg == "--control-max-clients") {
+      const auto v = value_for(arg);
+      if (!v) return std::unexpected(v.error());
+      const auto n = parse_int(arg, *v);
+      if (!n) return std::unexpected(n.error());
+      o.ingress.max_clients = *n;
 
     } else if (arg == "--preview") {
-      inv.config.sink.preview = true;
+      o.sink.preview = true;
     } else if (arg == "--snapshot") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
-      inv.config.sink.snapshot_path = *v;
+      o.sink.snapshot_path = *v;
     } else if (arg == "--rtsp") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
-      inv.config.sink.rtsp_url = *v;
+      o.sink.rtsp_url = std::string{*v};
     } else if (arg == "--bitrate") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
       const auto kbps = parse_int(arg, *v);
       if (!kbps) return std::unexpected(kbps.error());
-      if (*kbps <= 0) return fail(ErrorCode::config_invalid, "--bitrate: must be positive");
-      inv.config.sink.bitrate_kbps = *kbps;
+      o.sink.bitrate_kbps = *kbps;
     } else if (arg == "--no-hw-encode") {
-      inv.config.sink.hardware_encode = false;
+      o.sink.hardware_encode = false;
     } else if (arg == "--vaapi-device") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
-      inv.config.sink.vaapi_device = *v;
+      o.sink.vaapi_device = *v;
 
     } else {
       return fail(ErrorCode::config_invalid, std::format("unknown flag: '{}'", arg));
     }
   }
 
+  // Fully resolved for the common case (no --config file). When a config file
+  // is also given, the caller redoes this with merge(AppConfig{}, file, o) —
+  // see args.h.
+  inv.config = merge(AppConfig{}, {}, o);
+  if (const auto ok = validate(inv.config); !ok) return std::unexpected(ok.error());
   return inv;
 }
 

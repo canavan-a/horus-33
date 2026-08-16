@@ -7,12 +7,14 @@
 #include <thread>
 
 #include "channel.h"
+#include "control_relay.h"
 #include "emission_policy.h"
 #include "frame_decoder.h"
 #include "frame_mat.h"
 #include "frame_pool.h"
 #include "metrics.h"
 #include "overlay.h"
+#include "serial_queue.h"
 #include "slot.h"
 #include "target_selector.h"
 #include "track_message.h"
@@ -27,7 +29,7 @@ using Clock = std::chrono::steady_clock;
 // two queued for the overlay, and one spare.
 constexpr std::size_t kPoolSize = 6;
 constexpr std::size_t kOverlayQueue = 3;
-constexpr std::size_t kTrackQueue = 4;
+constexpr std::size_t kCommandQueue = 16;
 
 } // namespace
 
@@ -42,7 +44,12 @@ struct Pipeline::Impl {
   Slot<FrameRef> latest_frame;
   Slot<DetectionResult> latest_detections;
   Channel<FrameRef> to_overlay{kOverlayQueue, Overflow::drop_oldest};
-  Channel<TrackMessage> to_track{kTrackQueue, Overflow::drop_oldest};
+  // Tracks overwrite (newest wins); commands from the control relay queue in
+  // order and are never dropped silently. Both feed the same device-owning
+  // thread, which stays the sole writer to the serial port even with several
+  // relay clients attached.
+  SerialQueue to_device{kCommandQueue};
+  std::unique_ptr<ControlRelay> relay;  // null unless config.ingress.socket_path is set
 
   Metrics metrics;
 
@@ -63,7 +70,7 @@ struct Pipeline::Impl {
   void capture_loop(std::stop_token token);
   void inference_loop(std::stop_token token);
   void overlay_loop(std::stop_token token);
-  void track_loop(std::stop_token token);
+  void device_loop(std::stop_token token);
   void metrics_loop(std::stop_token token);
 };
 
@@ -88,6 +95,15 @@ Result<std::unique_ptr<Pipeline>> Pipeline::create(const AppConfig& config, Stag
   }
 
   auto impl = std::make_unique<Impl>(config, std::move(stages), std::move(*device), *decoder);
+
+  if (!config.ingress.socket_path.empty()) {
+    auto relay = ControlRelay::create(config.ingress.socket_path,
+                                      static_cast<std::size_t>(config.ingress.max_clients),
+                                      impl->to_device);
+    if (!relay) return std::unexpected(relay.error());
+    impl->relay = std::move(*relay);
+  }
+
   return std::unique_ptr<Pipeline>{new Pipeline{std::move(impl)}};
 }
 
@@ -122,6 +138,14 @@ void Pipeline::Impl::capture_loop(std::stop_token token) {
       metrics.decode_failures.fetch_add(1, std::memory_order_relaxed);
       continue;
     }
+
+    // Mount-orientation correction, before anything else — see apply_flip's
+    // comment for why this happens here and only here.
+    if (config.capture.flip_horizontal || config.capture.flip_vertical) {
+      cv::Mat mat = mat_for(frame);
+      apply_flip(mat, config.capture.flip_horizontal, config.capture.flip_vertical);
+    }
+
     frame.seq = seq++;
     frame.captured_at = arrived;
 
@@ -193,15 +217,16 @@ void Pipeline::Impl::inference_loop(std::stop_token token) {
     if (decision.message.has_value()) {
       auto outgoing = *decision.message;
       if (config.serial.send_seq) {
-        // Starts at 1: zero would read as "no seq" on the device.
+        // Starts at 1: zero would read as "no seq" on the device. Stays well
+        // clear of the control relay's own seq range (0x8000'0000+), so a
+        // reply to one can never be misrouted as a reply to the other.
         outgoing.seq = ++track_seq;
       }
-      to_track.push(outgoing);
+      to_device.publish_track(outgoing);
     }
   }
 
   latest_detections.close();
-  to_track.close();
 }
 
 void Pipeline::Impl::overlay_loop(std::stop_token token) {
@@ -280,17 +305,39 @@ void Pipeline::Impl::overlay_loop(std::stop_token token) {
   }
 }
 
-void Pipeline::Impl::track_loop(std::stop_token token) {
-  while (!token.stop_requested()) {
-    auto message = to_track.pop_blocking(token);
-    if (!message.has_value()) break;
+void Pipeline::Impl::device_loop(std::stop_token token) {
+  // The sole thread that touches the device link, whether that's tracks from
+  // inference_loop or commands relayed from other processes — this is what
+  // keeps capture-eye the sole writer to the serial port even with a control
+  // relay attached.
+  //
+  // Bounded wait rather than an unbounded one: replies to relayed commands
+  // (describe/set/ping) can arrive when no track is being sent, and used to
+  // only surface after the next write (serial_port.cpp's old pull-driven
+  // reads). Polling read() on this fixed cadence regardless of write
+  // activity is the fix.
+  constexpr auto kReadPollInterval = std::chrono::milliseconds{20};
 
-    const auto line = encode_track(*message);
-    if (const auto written = stages.track_sink.write(line); !written) {
-      metrics.track_errors.fetch_add(1, std::memory_order_relaxed);
-      continue;
+  while (!token.stop_requested()) {
+    if (auto item = to_device.take_blocking_for(token, kReadPollInterval); item.has_value()) {
+      const std::string line = std::holds_alternative<TrackMessage>(*item)
+                                    ? encode_track(std::get<TrackMessage>(*item))
+                                    : std::get<std::string>(*item);
+      const bool is_track = std::holds_alternative<TrackMessage>(*item);
+
+      if (const auto written = stages.device_link.write(line); !written) {
+        metrics.track_errors.fetch_add(1, std::memory_order_relaxed);
+      } else if (is_track) {
+        metrics.tracks_sent.fetch_add(1, std::memory_order_relaxed);
+      }
     }
-    metrics.tracks_sent.fetch_add(1, std::memory_order_relaxed);
+
+    if (auto replies = stages.device_link.read(); replies.has_value()) {
+      for (const auto& reply : *replies) {
+        std::fprintf(stderr, "device: %s\n", reply.c_str());
+        if (relay) relay->dispatch_incoming(reply);
+      }
+    }
   }
 }
 
@@ -358,8 +405,8 @@ Result<void> Pipeline::run(std::stop_token token) {
     // Declared in reverse order of shutdown: destructors run bottom-up, so the
     // consumers join before the producers they depend on are gone.
     std::jthread metrics_thread{[&](std::stop_token t) { impl.metrics_loop(t); }};
-    std::jthread track_thread{
-        [&] { impl.track_loop(downstream_stop.get_token()); }};
+    std::jthread device_thread{
+        [&] { impl.device_loop(downstream_stop.get_token()); }};
     std::jthread overlay_thread{
         [&] { impl.overlay_loop(downstream_stop.get_token()); }};
     std::jthread inference_thread{
@@ -380,7 +427,7 @@ Result<void> Pipeline::run(std::stop_token token) {
     impl.latest_frame.close();
     impl.latest_detections.close();
     impl.to_overlay.close();
-    impl.to_track.close();
+    impl.to_device.close();
     metrics_thread.request_stop();
   }
 

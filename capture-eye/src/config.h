@@ -3,7 +3,10 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
+
+#include "error.h"
 
 namespace capture_eye {
 
@@ -29,6 +32,13 @@ struct CaptureConfig {
   // The driver may grant something other than what we asked for. Failing loudly
   // beats silently running at 5fps.
   bool strict_format = true;
+  // Mount-orientation correction, applied once right after decode — see
+  // apply_flip (frame_mat.h). Config-only, not exposed at runtime: flipping
+  // mid-run would need every in-flight detection's coordinates
+  // reinterpreted, for a correction that is fixed by how the camera is
+  // physically mounted and never needs to change while running.
+  bool flip_horizontal = false;
+  bool flip_vertical = false;
 };
 
 // The default is the fp32 export; the fp16/int8/quantized variants live at the
@@ -86,6 +96,14 @@ struct SinkConfig {
   std::filesystem::path vaapi_device = "/dev/dri/renderD128";
 };
 
+// The control relay: lets other processes (horusctl, a future REST server)
+// send describe/set/ping to the device through capture-eye, which is the only
+// process allowed to hold the serial port. Off unless a socket path is given.
+struct IngressConfig {
+  std::filesystem::path socket_path;  // empty = disabled
+  int max_clients = 8;
+};
+
 struct AppConfig {
   CaptureConfig capture;
   ModelConfig model;
@@ -93,6 +111,95 @@ struct AppConfig {
   SerialConfig serial;
   TrackingConfig tracking;
   SinkConfig sink;
+  IngressConfig ingress;
 };
+
+// Mirrors AppConfig field-for-field, but every field is optional: absent means
+// "this source did not mention it" rather than "use the default". Two sources
+// (a config file, the command line) each produce one of these; merge() decides
+// what wins. This is what keeps "--fps not passed" distinguishable from
+// "--fps 60 passed", so a config file's fps: 30 can't be silently overridden by
+// a CLI default (args.cpp, parse_args).
+struct CaptureConfigOverlay {
+  std::optional<std::filesystem::path> device;
+  std::optional<int> width;
+  std::optional<int> height;
+  std::optional<std::uint32_t> fourcc;
+  std::optional<int> fps;
+  std::optional<int> buffer_count;
+  std::optional<int> decode_scale;
+  std::optional<bool> strict_format;
+  std::optional<bool> flip_horizontal;
+  std::optional<bool> flip_vertical;
+};
+
+struct ModelConfigOverlay {
+  std::optional<std::string> variant;
+  std::optional<std::string> url;
+  std::optional<std::string> sha256;
+  std::optional<std::filesystem::path> path;
+  std::optional<bool> offline;
+  std::optional<bool> allow_unpinned;
+};
+
+struct InferenceConfigOverlay {
+  std::optional<int> input_size;
+  std::optional<float> conf_threshold;
+  std::optional<int> intra_op_threads;
+  std::optional<int> inter_op_threads;
+  std::optional<bool> fake;
+};
+
+struct SerialConfigOverlay {
+  std::optional<std::filesystem::path> port;
+  std::optional<int> baud;
+  std::optional<bool> enabled;
+  std::optional<int> max_hz;
+  std::optional<int> lost_repeat_hz;
+  std::optional<bool> send_seq;
+};
+
+struct TrackingConfigOverlay {
+  std::optional<TargetPolicy> policy;
+  std::optional<float> lock_iou;
+  std::optional<std::chrono::milliseconds> lost_grace;
+};
+
+struct SinkConfigOverlay {
+  std::optional<bool> preview;
+  std::optional<std::filesystem::path> snapshot_path;
+  std::optional<int> snapshot_every;
+  std::optional<std::string> rtsp_url;
+  std::optional<int> bitrate_kbps;
+  std::optional<bool> hardware_encode;
+  std::optional<std::filesystem::path> vaapi_device;
+};
+
+struct IngressConfigOverlay {
+  std::optional<std::filesystem::path> socket_path;
+  std::optional<int> max_clients;
+};
+
+struct ConfigOverlay {
+  CaptureConfigOverlay capture;
+  ModelConfigOverlay model;
+  InferenceConfigOverlay inference;
+  SerialConfigOverlay serial;
+  TrackingConfigOverlay tracking;
+  SinkConfigOverlay sink;
+  IngressConfigOverlay ingress;
+};
+
+// Layers `file` over `base`, then `flags` over the result. An absent optional
+// never overwrites; a present one always does — this is the entire precedence
+// rule (defaults < --config FILE < CLI flags) and it lives in exactly one
+// place so nothing else has to reimplement it.
+[[nodiscard]] AppConfig merge(const AppConfig& base, const ConfigOverlay& file,
+                               const ConfigOverlay& flags);
+
+// Range/sanity checks that used to be scattered across args.cpp's flag
+// parsing. Runs after merge() so a bad value from the config file is rejected
+// exactly like a bad flag, rather than only the flag path being checked.
+[[nodiscard]] Result<void> validate(const AppConfig& config);
 
 } // namespace capture_eye

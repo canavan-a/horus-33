@@ -47,6 +47,7 @@ endif()
 add_library(capture_eye_core STATIC
   src/error.cpp
   src/args.cpp
+  src/config.cpp
   src/frame_pool.cpp
   src/track_message.cpp
   src/target_selector.cpp
@@ -60,6 +61,7 @@ target_link_libraries(capture_eye_core PUBLIC capture_eye_flags)
 # ---- edges: things that talk to the outside world ----
 add_library(capture_eye_io STATIC
   src/model_store.cpp
+  src/config_file.cpp
   src/v4l2_device.cpp
   src/frame_decoder.cpp
   src/fake_detector.cpp
@@ -70,12 +72,14 @@ add_library(capture_eye_io STATIC
   src/pipeline.cpp
   src/onnx_detector.cpp
   src/serial_port.cpp
-  src/stdout_track_sink.cpp
+  src/stdout_device_link.cpp
+  src/control_relay.cpp
 )
 target_include_directories(capture_eye_io PUBLIC src PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
 target_link_libraries(capture_eye_io
   PUBLIC capture_eye_core ${OpenCV_LIBS}
-  PRIVATE OpenSSL::Crypto PkgConfig::CURL PkgConfig::SERIALPORT PkgConfig::FFMPEG ${ONNXRUNTIME_LIB}
+  PRIVATE OpenSSL::Crypto PkgConfig::CURL PkgConfig::SERIALPORT PkgConfig::FFMPEG
+          ${ONNXRUNTIME_LIB} nlohmann_json::nlohmann_json
 )
 
 # ---- executable ----
@@ -88,16 +92,22 @@ if(CAPTURE_EYE_OPENVINO)
   target_compile_definitions(capture-eye PRIVATE CAPTURE_EYE_OPENVINO=1)
 endif()
 
+install(TARGETS capture-eye RUNTIME DESTINATION bin)
+
 # ---- tests ----
 enable_testing()
 add_executable(capture-eye-tests
   tests/args_test.cpp
+  tests/config_test.cpp
+  tests/config_file_test.cpp
+  tests/serial_queue_test.cpp
   tests/model_store_test.cpp
   tests/primitives_test.cpp
   tests/track_message_test.cpp
   tests/target_selector_test.cpp
   tests/emission_policy_test.cpp
   tests/letterbox_test.cpp
+  tests/frame_mat_test.cpp
   tests/yolo_output_test.cpp
 )
 target_link_libraries(capture-eye-tests

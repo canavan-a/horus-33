@@ -138,14 +138,15 @@ Result<std::vector<std::string>> SerialPort::read_lines() {
   return lines;
 }
 
-Result<TrackSink> make_serial_track_sink(const SerialConfig& config) {
+Result<DeviceLink> make_serial_device_link(const SerialConfig& config) {
   auto opened = SerialPort::open(config);
   if (!opened) return std::unexpected(opened.error());
 
   std::fprintf(stderr, "serial: %s @%d\n", config.port.string().c_str(), config.baud);
 
-  // Owned by the sink lambda. The track stage is the only caller, so this state
-  // is single-threaded despite living in a std::function.
+  // Owned by the write/read lambdas. The device-owning stage is the only
+  // caller of either, so this state is single-threaded despite living in two
+  // std::functions.
   struct State {
     SerialPort port;
     SerialConfig config;
@@ -154,9 +155,9 @@ Result<TrackSink> make_serial_track_sink(const SerialConfig& config) {
   };
   auto state = std::make_shared<State>(State{.port = std::move(*opened), .config = config});
 
-  TrackSink sink;
-  sink.name = "serial";
-  sink.write = [state](std::string_view line) -> Result<void> {
+  DeviceLink link;
+  link.name = "serial";
+  link.write = [state](std::string_view line) -> Result<void> {
     const auto now = Clock::now();
 
     if (!state->connected) {
@@ -180,17 +181,15 @@ Result<TrackSink> make_serial_track_sink(const SerialConfig& config) {
       std::fprintf(stderr, "serial: %s\n", to_string(written.error()).c_str());
       return std::unexpected(written.error());
     }
-
-    // Drain whatever the device said. `track` is answered with nothing, so in
-    // steady state this is silent; anything here is a reboot or a complaint.
-    if (auto replies = state->port.read_lines(); replies.has_value()) {
-      for (const auto& reply : *replies) {
-        std::fprintf(stderr, "device: %s\n", reply.c_str());
-      }
-    }
     return {};
   };
-  return sink;
+  // Independent of write: replies to describe/set/ping may arrive when no
+  // track is being sent, and must not wait for the next write to surface.
+  link.read = [state]() -> Result<std::vector<std::string>> {
+    if (!state->connected) return std::vector<std::string>{};
+    return state->port.read_lines();
+  };
+  return link;
 }
 
 } // namespace capture_eye

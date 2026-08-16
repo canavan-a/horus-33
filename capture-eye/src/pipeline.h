@@ -6,9 +6,9 @@
 
 #include "config.h"
 #include "detector.h"
+#include "device_link.h"
 #include "error.h"
 #include "frame_sink.h"
-#include "track_sink.h"
 
 namespace capture_eye {
 
@@ -22,7 +22,7 @@ public:
   struct Stages {
     Detector detector;
     std::vector<FrameSink> frame_sinks;
-    TrackSink track_sink;
+    DeviceLink device_link;
   };
 
   // Sinks that need the decoded frame size are built by this callback, after

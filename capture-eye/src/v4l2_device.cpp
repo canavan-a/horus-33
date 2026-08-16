@@ -8,8 +8,10 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <format>
+#include <thread>
 #include <utility>
 
 namespace capture_eye {
@@ -25,6 +27,27 @@ int retry_ioctl(int fd, unsigned long request, void* argument) {
 }
 
 [[nodiscard]] std::string errno_message() { return std::strerror(errno); }
+
+// A device just released by another process (or by capture-eye's own
+// previous run, restarted quickly by systemd's Restart=always or a dev
+// script) can answer STREAMON with EPROTO or EBUSY for a brief moment while
+// the UVC driver settles — confirmed by hand: closing and immediately
+// reopening the same camera reliably reproduced "VIDIOC_STREAMON: Protocol
+// error", and the same open succeeded a couple of seconds later with no
+// other change. Retrying a config error would hide a real problem; retrying
+// this specific transient is what "camera_stream_failed" should mean.
+constexpr int kStreamOnRetries = 10;
+constexpr auto kStreamOnRetryDelay = std::chrono::milliseconds{200};
+
+[[nodiscard]] int streamon_with_retry(int fd, v4l2_buf_type* type) {
+  for (int attempt = 0; attempt < kStreamOnRetries; ++attempt) {
+    const int result = retry_ioctl(fd, VIDIOC_STREAMON, type);
+    if (result == 0) return 0;
+    if (errno != EPROTO && errno != EBUSY) return result;  // a real error; don't mask it
+    if (attempt + 1 < kStreamOnRetries) std::this_thread::sleep_for(kStreamOnRetryDelay);
+  }
+  return -1;
+}
 
 } // namespace
 
@@ -188,7 +211,7 @@ Result<V4l2Device> V4l2Device::open(const CaptureConfig& config) {
   }
 
   v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-  if (retry_ioctl(device.fd_, VIDIOC_STREAMON, &type) < 0) {
+  if (streamon_with_retry(device.fd_, &type) < 0) {
     return fail(ErrorCode::camera_stream_failed,
                 std::format("VIDIOC_STREAMON: {}", errno_message()));
   }

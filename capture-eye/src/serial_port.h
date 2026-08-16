@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "config.h"
+#include "device_link.h"
 #include "error.h"
-#include "track_sink.h"
 
 struct sp_port;
 
@@ -45,11 +45,12 @@ private:
   std::string pending_;  // bytes received but not yet terminated by a newline
 };
 
-// A track sink that writes to the device, reopening the port if it goes away
-// (unplug, reset, or a reflash mid-run) so the pipeline keeps running headless.
+// A device link backed by the real port, reopening it if it goes away (unplug,
+// reset, or a reflash mid-run) so the pipeline keeps running headless.
 //
-// Device output is drained and echoed to stderr: `hello` reveals a reboot, and
-// any `err` means we put something malformed on the wire.
-[[nodiscard]] Result<TrackSink> make_serial_track_sink(const SerialConfig& config);
+// write and read are independent: read must be polled on its own cadence by
+// the caller, not only after a write, or replies to control-relay commands
+// (which may arrive when no track is being sent) would only surface by luck.
+[[nodiscard]] Result<DeviceLink> make_serial_device_link(const SerialConfig& config);
 
 } // namespace capture_eye
