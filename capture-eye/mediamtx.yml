@@ -1,0 +1,34 @@
+# MediaMTX configuration for capture-eye.
+#
+# capture-eye publishes annotated H.264 over RTSP; MediaMTX re-serves it as
+# WebRTC (for browsers), RTSP (for ffplay/VLC) and LL-HLS. Keeping the transport
+# here rather than in the C++ means swapping WebRTC for Media-over-QUIC later is
+# a config change, not a rewrite.
+#
+#   nix develop --command mediamtx mediamtx.yml
+#   capture-eye --rtsp rtsp://127.0.0.1:8554/eye
+#   then open http://127.0.0.1:8889/eye
+
+logLevel: info
+
+# Ingest from capture-eye.
+rtsp: yes
+rtspTransports: [tcp]
+rtspAddress: :8554
+
+# Browser playback. WHEP is served at the same path as the viewer page.
+webrtc: yes
+webrtcAddress: :8889
+# Loopback and LAN only: no STUN/TURN, so nothing here is reachable off-network
+# and no third-party ICE server sees the stream.
+webrtcICEServers2: []
+
+# Off by default. Both add latency, and neither is needed to watch the tracker;
+# enable hls if you want a browser tab that survives a reconnect.
+hls: no
+rtmp: no
+srt: no
+
+paths:
+  eye:
+    source: publisher

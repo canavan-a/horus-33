@@ -1,0 +1,53 @@
+# ---- Editors / OS ----
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+!.vscode/extensions.json
+.cache/
+
+# ---- Nix ----
+result
+result-*
+.direnv/
+.envrc.local
+
+# ---- C++ / CMake (capture-eye) ----
+build/
+cmake-build-*/
+compile_commands.json
+.clangd/
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+
+# ---- Go (tui-controller) ----
+/tui-controller/horusctl
+/tui-controller/cmd/horusctl/horusctl
+*.test
+*.out
+!*.go
+
+# ---- PlatformIO / ESP32 (firmware) ----
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# ---- Models / captures (capture-eye runtime artifacts) ----
+*.onnx
+*.xml.bin
+models/
+captures/
+*.mp4
+*.avi
+
+# ---- Secrets / local config ----
+.env
+.env.*
+!.env.example
+*.local.toml
