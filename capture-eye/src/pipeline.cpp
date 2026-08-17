@@ -284,7 +284,8 @@ void Pipeline::Impl::overlay_loop(std::stop_token token) {
                                  .detections = people,
                                  .selected = selected,
                                  .seq = source.seq,
-                                 .captured_at = source.captured_at};
+                                 .captured_at = source.captured_at,
+                                 .detection_seq = detections.has_value() ? detections->frame_seq : 0};
 
     for (const auto& sink : stages.frame_sinks) {
       // Backstop: sinks are expected to return errors, but they wrap libraries

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Descriptor, LinkStatus, Values, WSEvent } from '@/lib/proto'
+import type { ClippingStatus, Descriptor, LinkStatus, Values, WSEvent } from '@/lib/proto'
 
 // Mirrors reconnect intervals used throughout the rest of this stack
 // (tui-controller's serial link, horus-server's Unix link): reconnect on a
@@ -11,6 +11,7 @@ export interface HorusState {
   linkError?: string
   descriptor?: Descriptor
   state: Record<string, Values>
+  clipping?: ClippingStatus
 }
 
 // Owns one WebSocket to horus-server for the app's lifetime, reconnecting on
@@ -21,6 +22,7 @@ export function useHorus(): HorusState {
   const [linkError, setLinkError] = useState<string | undefined>(undefined)
   const [descriptor, setDescriptor] = useState<Descriptor>()
   const [state, setState] = useState<Record<string, Values>>({})
+  const [clipping, setClipping] = useState<ClippingStatus | undefined>(undefined)
 
   // Avoids a stale closure re-scheduling reconnects after unmount.
   const alive = useRef(true)
@@ -55,6 +57,9 @@ export function useHorus(): HorusState {
           case 'error':
             if (msg.error) setLinkError(msg.error.msg)
             break
+          case 'clipping':
+            if (msg.clipping) setClipping(msg.clipping)
+            break
         }
       }
 
@@ -73,5 +78,5 @@ export function useHorus(): HorusState {
     }
   }, [])
 
-  return { linkStatus, linkError, descriptor, state }
+  return { linkStatus, linkError, descriptor, state, clipping }
 }

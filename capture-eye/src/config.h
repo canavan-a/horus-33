@@ -104,6 +104,24 @@ struct IngressConfig {
   int max_clients = 8;
 };
 
+// Recording clips of people to disk. Off unless output_dir is set. A second,
+// separate host-only admin socket (not the ingress relay above, which is a
+// dumb ESP32-only pipe) lets horus-server flip `enabled` live and poll status
+// without a restart.
+struct ClippingConfig {
+  bool enabled = false;
+  std::filesystem::path output_dir;         // empty = disabled even if enabled=true
+  std::filesystem::path admin_socket_path;  // empty = no live admin toggling
+  double pre_roll_seconds = 1.0;
+  // Consecutive inference ticks with nobody in frame before a clip stops —
+  // ticks, not video frames or milliseconds, because capture and inference
+  // run at different, drifting rates (see ClipPolicy).
+  int stop_after_ticks = 40;
+  int bitrate_kbps = 4000;
+  bool hardware_encode = true;
+  std::filesystem::path vaapi_device = "/dev/dri/renderD128";
+};
+
 struct AppConfig {
   CaptureConfig capture;
   ModelConfig model;
@@ -112,6 +130,7 @@ struct AppConfig {
   TrackingConfig tracking;
   SinkConfig sink;
   IngressConfig ingress;
+  ClippingConfig clipping;
 };
 
 // Mirrors AppConfig field-for-field, but every field is optional: absent means
@@ -180,6 +199,17 @@ struct IngressConfigOverlay {
   std::optional<int> max_clients;
 };
 
+struct ClippingConfigOverlay {
+  std::optional<bool> enabled;
+  std::optional<std::filesystem::path> output_dir;
+  std::optional<std::filesystem::path> admin_socket_path;
+  std::optional<double> pre_roll_seconds;
+  std::optional<int> stop_after_ticks;
+  std::optional<int> bitrate_kbps;
+  std::optional<bool> hardware_encode;
+  std::optional<std::filesystem::path> vaapi_device;
+};
+
 struct ConfigOverlay {
   CaptureConfigOverlay capture;
   ModelConfigOverlay model;
@@ -188,6 +218,7 @@ struct ConfigOverlay {
   TrackingConfigOverlay tracking;
   SinkConfigOverlay sink;
   IngressConfigOverlay ingress;
+  ClippingConfigOverlay clipping;
 };
 
 // Layers `file` over `base`, then `flags` over the result. An absent optional

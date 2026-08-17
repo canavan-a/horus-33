@@ -105,7 +105,8 @@ run capture-eye nix develop "$ROOT/capture-eye" --command \
   "$ROOT/capture-eye/build/capture-eye" --config "$CONFIG"
 
 run horus-server nix develop "$ROOT" --command bash -c \
-  "cd '$ROOT/server' && go run ./cmd/horus-server --socket /tmp/horus-control.sock --listen :8090"
+  "cd '$ROOT/server' && go run ./cmd/horus-server --socket /tmp/horus-control.sock --listen :8090 \
+    --clips-dir '$ROOT/capture-eye/dev-clips' --clip-admin-socket /tmp/horus-clip-admin.sock"
 
 run web nix develop "$ROOT" --command bash -c \
   "cd '$ROOT/web' && [ -d node_modules ] || npm install; npm run dev -- --port 5173"

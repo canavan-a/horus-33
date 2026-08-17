@@ -25,6 +25,11 @@ enum class ErrorCode {
 
 [[nodiscard]] std::string_view describe(ErrorCode code);
 
+// Distinct process exit codes for the failures worth telling apart at a
+// glance from `systemctl status`/`journalctl`, without reading the message
+// text. Everything not called out here keeps the existing generic 1.
+[[nodiscard]] int exit_code_for(ErrorCode code);
+
 // A code alone is not actionable — "camera open failed" without the errno or the
 // device path costs more debugging time than the string costs to carry.
 struct Error {

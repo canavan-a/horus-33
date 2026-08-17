@@ -3,6 +3,9 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 
 	"github.com/canavan-a/horus-33/server/internal/proto"
 )
@@ -23,7 +26,103 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/estop", s.handleEstop)
 	mux.HandleFunc("GET /api/ws", s.handleWS)
 
+	mux.HandleFunc("GET /api/clips", s.handleListClips)
+	mux.HandleFunc("GET /api/clips/{name}", s.handleServeClip)
+	mux.HandleFunc("GET /api/clips/{name}/thumbnail", s.handleServeThumbnail)
+	mux.HandleFunc("DELETE /api/clips/{name}", s.handleDeleteClip)
+	mux.HandleFunc("GET /api/clipping/status", s.handleClippingStatus)
+	mux.HandleFunc("POST /api/clipping/enabled", s.handleSetClippingEnabled)
+
 	return mux
+}
+
+// clipNamePattern rejects anything that isn't a plain filename this server
+// itself would have listed — no "..", no "/", nothing that could escape
+// clipsDir when joined onto it.
+var clipNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+\.mp4$`)
+
+func (s *Server) handleListClips(w http.ResponseWriter, _ *http.Request) {
+	clips, err := s.ListClips()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, clips)
+}
+
+func (s *Server) handleServeClip(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !clipNamePattern.MatchString(name) {
+		writeError(w, http.StatusBadRequest, "invalid clip name")
+		return
+	}
+	if s.ClipsDir() == "" {
+		writeError(w, http.StatusServiceUnavailable, "clips directory not configured")
+		return
+	}
+	// http.ServeFile handles Range requests natively — required for a
+	// browser <video> element to seek, and nothing extra to write for it.
+	http.ServeFile(w, r, filepath.Join(s.ClipsDir(), name))
+}
+
+func (s *Server) handleServeThumbnail(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !clipNamePattern.MatchString(name) {
+		writeError(w, http.StatusBadRequest, "invalid clip name")
+		return
+	}
+	if s.ClipsDir() == "" {
+		writeError(w, http.StatusServiceUnavailable, "clips directory not configured")
+		return
+	}
+	path := thumbnailPath(filepath.Join(s.ClipsDir(), name))
+	if _, err := os.Stat(path); err != nil {
+		writeError(w, http.StatusNotFound, "no thumbnail for this clip")
+		return
+	}
+	http.ServeFile(w, r, path)
+}
+
+func (s *Server) handleDeleteClip(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !clipNamePattern.MatchString(name) {
+		writeError(w, http.StatusBadRequest, "invalid clip name")
+		return
+	}
+	if err := s.DeleteClip(name); err != nil {
+		if os.IsNotExist(err) {
+			writeError(w, http.StatusNotFound, "no such clip")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (s *Server) handleClippingStatus(w http.ResponseWriter, _ *http.Request) {
+	status, err := s.ClippingStatus()
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) handleSetClippingEnabled(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	status, err := s.SetClippingEnabled(body.Enabled)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -158,6 +257,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	for id, v := range s.StateSnapshot() {
 		state := proto.State{ID: id, V: v}
 		initial = append(initial, wsEvent{Type: "state", State: &state})
+	}
+	if clipping, err := s.ClippingStatus(); err == nil {
+		initial = append(initial, wsEvent{Type: "clipping", Clipping: &clipping})
 	}
 
 	s.hub.Serve(w, r, initial)

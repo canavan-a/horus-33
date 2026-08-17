@@ -25,6 +25,13 @@ struct AnnotatedFrame {
   std::optional<Detection> selected;
   std::uint64_t seq = 0;
   std::chrono::steady_clock::time_point captured_at{};
+  // The inference tick this frame's detections came from (DetectionResult's
+  // own frame_seq), not this frame's own seq above. Overlay runs at capture
+  // rate and repeats the same detection result across several frames when
+  // inference is slower — a sink comparing consecutive detection_seq values
+  // can tell a genuinely new detection tick from a stale repeat. 0 before the
+  // first inference result ever arrives.
+  std::uint64_t detection_seq = 0;
 };
 
 // Where annotated video goes. A value type, so adding a transport means writing

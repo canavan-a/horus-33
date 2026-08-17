@@ -58,13 +58,26 @@ export interface LinkSnapshot {
   hello?: Hello
 }
 
+export interface ClippingStatus {
+  enabled: boolean
+  recording: boolean
+}
+
+export interface Clip {
+  name: string
+  size: number
+  modTime: string
+  thumbnail: boolean
+}
+
 // The WebSocket envelope horus-server sends — one shape, discriminated by
 // `type`, matching server/internal/api/hub.go's wsEvent exactly.
 export interface WSEvent {
-  type: 'link' | 'hello' | 'descriptor' | 'state' | 'error'
+  type: 'link' | 'hello' | 'descriptor' | 'state' | 'error' | 'clipping'
   status?: string
   hello?: Hello
   descriptor?: Descriptor
   state?: State
   error?: ErrMsg
+  clipping?: ClippingStatus
 }

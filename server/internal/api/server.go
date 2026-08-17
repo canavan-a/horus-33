@@ -10,9 +10,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/canavan-a/horus-33/server/internal/clipadmin"
 	"github.com/canavan-a/horus-33/server/internal/link"
 	"github.com/canavan-a/horus-33/server/internal/proto"
 )
@@ -70,6 +74,13 @@ type Server struct {
 	replayPath string
 	desiredMu  sync.Mutex
 	desired    map[string]proto.Values
+
+	// Clipping: entirely orthogonal to the ESP32 link above. clipAdmin is nil
+	// when --clip-admin-socket was not given (clip listing/serving can still
+	// work; live toggling and status just aren't available). clipsDir empty
+	// disables listing/serving too.
+	clipAdmin *clipadmin.Client
+	clipsDir  string
 }
 
 type pendingResult struct {
@@ -78,8 +89,9 @@ type pendingResult struct {
 }
 
 // New starts consuming lnk's events immediately. replayPath may be empty to
-// disable state replay.
-func New(lnk link.Link, replayPath string) *Server {
+// disable state replay. clipAdminSocket/clipsDir may both be empty, in which
+// case clipping support is simply absent from this server's API surface.
+func New(lnk link.Link, replayPath string, clipAdminSocket string, clipsDir string) *Server {
 	s := &Server{
 		lnk:        lnk,
 		status:     StatusConnecting,
@@ -89,10 +101,146 @@ func New(lnk link.Link, replayPath string) *Server {
 		hub:        newHub(),
 		replayPath: replayPath,
 		desired:    make(map[string]proto.Values),
+		clipsDir:   clipsDir,
+	}
+	if clipAdminSocket != "" {
+		s.clipAdmin = clipadmin.New(clipAdminSocket)
 	}
 	s.loadDesired()
 	go s.pump()
+	if s.clipAdmin != nil {
+		go s.pollClipping()
+	}
 	return s
+}
+
+// clipStatusPollInterval trades a few seconds of UI staleness on the
+// "recording" indicator for keeping the admin protocol pure request/response
+// — no unsolicited push from capture-eye to handle.
+const clipStatusPollInterval = 3 * time.Second
+
+func (s *Server) pollClipping() {
+	var last clipadmin.Status
+	haveLast := false
+	for {
+		time.Sleep(clipStatusPollInterval)
+		status, err := s.clipAdmin.Status()
+		if err != nil {
+			continue // capture-eye restarting, or clipping off; try again next tick
+		}
+		if !haveLast || status != last {
+			haveLast = true
+			last = status
+			s.hub.broadcast(wsEvent{Type: "clipping", Clipping: &ClippingStatus{
+				Enabled: status.Enabled, Recording: status.Recording,
+			}})
+		}
+	}
+}
+
+// ClippingStatus is the JSON shape exposed over REST/WS — kept as its own
+// type (rather than reusing clipadmin.Status directly) so this package's
+// wire format doesn't change just because the admin socket's internal client
+// does.
+type ClippingStatus struct {
+	Enabled   bool `json:"enabled"`
+	Recording bool `json:"recording"`
+}
+
+// ClippingStatus dials capture-eye's admin socket on demand — call frequency
+// here is low (REST polling, occasional toggles), so there is no reason to
+// hold a persistent connection open.
+func (s *Server) ClippingStatus() (ClippingStatus, error) {
+	if s.clipAdmin == nil {
+		return ClippingStatus{}, errors.New("clip admin not configured")
+	}
+	status, err := s.clipAdmin.Status()
+	if err != nil {
+		return ClippingStatus{}, err
+	}
+	return ClippingStatus{Enabled: status.Enabled, Recording: status.Recording}, nil
+}
+
+func (s *Server) SetClippingEnabled(enabled bool) (ClippingStatus, error) {
+	if s.clipAdmin == nil {
+		return ClippingStatus{}, errors.New("clip admin not configured")
+	}
+	status, err := s.clipAdmin.SetEnabled(enabled)
+	if err != nil {
+		return ClippingStatus{}, err
+	}
+	return ClippingStatus{Enabled: status.Enabled, Recording: status.Recording}, nil
+}
+
+// ClipInfo is one entry in GET /api/clips.
+type ClipInfo struct {
+	Name      string    `json:"name"`
+	Size      int64     `json:"size"`
+	ModTime   time.Time `json:"modTime"`
+	Thumbnail bool      `json:"thumbnail"`
+}
+
+// thumbnailPath is capture-eye's own convention (clip_sink.cpp's
+// generate_thumbnail): the same basename as the clip, .jpg instead of .mp4.
+func thumbnailPath(clipPath string) string {
+	return strings.TrimSuffix(clipPath, filepath.Ext(clipPath)) + ".jpg"
+}
+
+// ListClips reads capture-eye's clips directory directly off disk — both
+// processes run on the same host (see nix/module.nix's clipsDir option), so
+// there is no reason to proxy this through capture-eye at all.
+func (s *Server) ListClips() ([]ClipInfo, error) {
+	if s.clipsDir == "" {
+		return nil, errors.New("clips directory not configured")
+	}
+	entries, err := os.ReadDir(s.clipsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []ClipInfo{}, nil // nothing recorded yet
+		}
+		return nil, err
+	}
+	clips := make([]ClipInfo, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".mp4" {
+			continue // skip .mp4.tmp (in-progress) and anything else
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		fullPath := filepath.Join(s.clipsDir, e.Name())
+		_, thumbErr := os.Stat(thumbnailPath(fullPath))
+		clips = append(clips, ClipInfo{
+			Name:      e.Name(),
+			Size:      info.Size(),
+			ModTime:   info.ModTime(),
+			Thumbnail: thumbErr == nil,
+		})
+	}
+	sort.Slice(clips, func(i, j int) bool { return clips[i].ModTime.After(clips[j].ModTime) })
+	return clips, nil
+}
+
+// ClipsDir exposes the configured directory so routes.go can join and
+// validate a requested filename against it.
+func (s *Server) ClipsDir() string { return s.clipsDir }
+
+// DeleteClip removes a clip and its thumbnail (best-effort; a missing
+// thumbnail — never generated, or already gone — is not an error). name must
+// already have passed routes.go's clipNamePattern check.
+func (s *Server) DeleteClip(name string) error {
+	if s.clipsDir == "" {
+		return errors.New("clips directory not configured")
+	}
+	fullPath := filepath.Join(s.clipsDir, name)
+	if err := os.Remove(fullPath); err != nil {
+		return err
+	}
+	if err := os.Remove(thumbnailPath(fullPath)); err != nil && !os.IsNotExist(err) {
+		log.Printf("delete clip: thumbnail for %s: %v", name, err)
+	}
+	return nil
 }
 
 func (s *Server) pump() {

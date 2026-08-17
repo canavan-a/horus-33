@@ -33,6 +33,7 @@ using Json = nlohmann::json;
 [[nodiscard]] bool matches_type(const Json& value, const std::string&) { return value.is_string(); }
 [[nodiscard]] bool matches_type(const Json& value, const int&) { return value.is_number_integer(); }
 [[nodiscard]] bool matches_type(const Json& value, const float&) { return value.is_number(); }
+[[nodiscard]] bool matches_type(const Json& value, const double&) { return value.is_number(); }
 [[nodiscard]] bool matches_type(const Json& value, const bool&) { return value.is_boolean(); }
 
 template <typename T>
@@ -191,6 +192,31 @@ template <typename T>
   return {};
 }
 
+[[nodiscard]] Result<void> parse_clipping(const Json& obj, ClippingConfigOverlay& c) {
+  static constexpr std::array<std::string_view, 8> kKnown{
+      "enabled",     "output_dir",  "admin_socket_path", "pre_roll_seconds",
+      "stop_after_ticks", "bitrate_kbps", "hardware_encode", "vaapi_device"};
+  if (const auto ok = reject_unknown_keys(obj, "clipping", kKnown); !ok) return ok;
+
+  if (obj.contains("enabled")) TRY_ASSIGN(c.enabled, as<bool>(obj["enabled"], "clipping.enabled"));
+  if (obj.contains("output_dir"))
+    TRY_ASSIGN(c.output_dir, as<std::string>(obj["output_dir"], "clipping.output_dir"));
+  if (obj.contains("admin_socket_path"))
+    TRY_ASSIGN(c.admin_socket_path,
+               as<std::string>(obj["admin_socket_path"], "clipping.admin_socket_path"));
+  if (obj.contains("pre_roll_seconds"))
+    TRY_ASSIGN(c.pre_roll_seconds, as<double>(obj["pre_roll_seconds"], "clipping.pre_roll_seconds"));
+  if (obj.contains("stop_after_ticks"))
+    TRY_ASSIGN(c.stop_after_ticks, as<int>(obj["stop_after_ticks"], "clipping.stop_after_ticks"));
+  if (obj.contains("bitrate_kbps"))
+    TRY_ASSIGN(c.bitrate_kbps, as<int>(obj["bitrate_kbps"], "clipping.bitrate_kbps"));
+  if (obj.contains("hardware_encode"))
+    TRY_ASSIGN(c.hardware_encode, as<bool>(obj["hardware_encode"], "clipping.hardware_encode"));
+  if (obj.contains("vaapi_device"))
+    TRY_ASSIGN(c.vaapi_device, as<std::string>(obj["vaapi_device"], "clipping.vaapi_device"));
+  return {};
+}
+
 #undef TRY_ASSIGN
 
 } // namespace
@@ -218,8 +244,8 @@ Result<ConfigOverlay> load_config_file(const std::filesystem::path& path) {
                 std::format("--config: {}: top level must be an object", path.string()));
   }
 
-  static constexpr std::array<std::string_view, 7> kSections{
-      "capture", "model", "inference", "serial", "tracking", "sink", "ingress"};
+  static constexpr std::array<std::string_view, 8> kSections{
+      "capture", "model", "inference", "serial", "tracking", "sink", "ingress", "clipping"};
   if (const auto ok = reject_unknown_keys(root, "<top level>", kSections); !ok) {
     return std::unexpected(ok.error());
   }
@@ -251,6 +277,10 @@ Result<ConfigOverlay> load_config_file(const std::filesystem::path& path) {
   }
   if (root.contains("ingress")) {
     if (const auto ok = parse_ingress(root["ingress"], overlay.ingress); !ok)
+      return std::unexpected(ok.error());
+  }
+  if (root.contains("clipping")) {
+    if (const auto ok = parse_clipping(root["clipping"], overlay.clipping); !ok)
       return std::unexpected(ok.error());
   }
   return overlay;

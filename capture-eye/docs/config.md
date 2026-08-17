@@ -119,6 +119,46 @@ serial port at a time. Off unless `socket_path` is set.
 | `socket_path` | string | `--control-socket` |
 | `max_clients` | integer, ≥1 | `--control-max-clients` |
 
+### `clipping`
+
+Records a clip of anyone the tracker sees, straight to disk as it happens —
+one frame is encoded and written per video frame, so memory use is flat
+regardless of clip length; nothing about a clip is ever buffered whole in
+memory. Off unless `enabled` is `true`, and `output_dir` is required once it
+is. `admin_socket_path` is a second, separate, host-only Unix socket (not the
+`ingress` relay above, which is a dumb ESP32-only pipe) that lets a process
+like horus-server flip `enabled` live and poll status without a restart; leave
+it empty if you only ever want config-file control.
+
+`stop_after_ticks` counts consecutive **inference ticks** with nobody in
+frame, not video frames and not milliseconds — capture and inference run at
+different, drifting rates, so a tick count is the only thing that stays
+meaningful as that drift changes.
+
+`pre_roll_seconds` keeps a rolling in-memory buffer of that many seconds of
+recent video (preallocated once, at `pre_roll_seconds * capture fps` frames),
+so a clip includes a moment just before someone was first detected rather
+than starting exactly on the detection instant. This is the one part of
+clipping that does cost memory proportional to a setting: at 1s/30fps/720p
+that's roughly 83MB; keep it modest.
+
+Every finished clip also gets a `.jpg` thumbnail written alongside it (same
+basename, e.g. `clip-123-1.mp4` + `clip-123-1.jpg`), taken from the middle of
+the clip rather than the first or last frame. No config key — this always
+happens once a clip finishes, and a failure to produce one (corrupt re-read,
+disk full) is logged and otherwise ignored; it never affects recording itself.
+
+| key | type | flag |
+|---|---|---|
+| `enabled` | bool | `--clip` (sets `true`) |
+| `output_dir` | string, required if `enabled` | `--clip-dir` |
+| `admin_socket_path` | string | `--clip-admin-socket` |
+| `pre_roll_seconds` | number, [0.1, 10] | `--clip-preroll` |
+| `stop_after_ticks` | integer, ≥1 | `--clip-stop-ticks` |
+| `bitrate_kbps` | integer, >0 | — |
+| `hardware_encode` | bool | — |
+| `vaapi_device` | string | — |
+
 ## Errors
 
 A bad config file fails loudly rather than silently degrading:
@@ -134,3 +174,18 @@ capture-eye: invalid configuration: --config: cannot open 'missing.json'
 Range checks (positive fps, `conf_threshold` in [0,1], etc.) run *after* the
 file and flags are merged, so a bad value from the file is rejected exactly
 like a bad flag.
+
+## Exit codes
+
+Distinct process exit codes for the failures worth telling apart at a glance
+from `systemctl status`/`journalctl`, without reading the log message text —
+useful under `Restart=always`, where the process keeps getting relaunched and
+you want to know *why* without hunting through the journal every time.
+
+| Code | Meaning |
+|---|---|
+| 0 | clean exit (`--help`, `--list-formats`, etc.) |
+| 1 | other failure — decode, inference, model, sink |
+| 2 | invalid configuration (bad flag or config file) |
+| 10 | camera: not found, rejected format, or streaming failed |
+| 11 | serial: ESP32 not found or link failed to open |

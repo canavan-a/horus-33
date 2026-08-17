@@ -21,6 +21,24 @@ std::string_view describe(ErrorCode code) {
   return "unknown error";
 }
 
+int exit_code_for(ErrorCode code) {
+  switch (code) {
+    case ErrorCode::camera_open_failed:
+    case ErrorCode::camera_format_rejected:
+    case ErrorCode::camera_stream_failed:
+      return 10; // no camera / camera rejected the request
+    case ErrorCode::serial_open_failed:
+    case ErrorCode::serial_write_failed:
+      return 11; // no ESP32 / serial link failed
+    case ErrorCode::config_invalid:
+      return 2; // matches parse_args' existing hardcoded 2 in main.cpp — a
+                // config error is a config error regardless of which code
+                // path caught it first
+    default:
+      return 1;
+  }
+}
+
 std::string to_string(const Error& error) {
   std::string out{describe(error.code)};
   if (!error.message.empty()) {

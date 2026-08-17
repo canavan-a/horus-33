@@ -77,6 +77,18 @@ IngressConfig merge_ingress(IngressConfig c, const IngressConfigOverlay& o) {
   return c;
 }
 
+ClippingConfig merge_clipping(ClippingConfig c, const ClippingConfigOverlay& o) {
+  layer(c.enabled, o.enabled);
+  layer(c.output_dir, o.output_dir);
+  layer(c.admin_socket_path, o.admin_socket_path);
+  layer(c.pre_roll_seconds, o.pre_roll_seconds);
+  layer(c.stop_after_ticks, o.stop_after_ticks);
+  layer(c.bitrate_kbps, o.bitrate_kbps);
+  layer(c.hardware_encode, o.hardware_encode);
+  layer(c.vaapi_device, o.vaapi_device);
+  return c;
+}
+
 } // namespace
 
 AppConfig merge(const AppConfig& base, const ConfigOverlay& file, const ConfigOverlay& flags) {
@@ -88,6 +100,7 @@ AppConfig merge(const AppConfig& base, const ConfigOverlay& file, const ConfigOv
   result.tracking = merge_tracking(result.tracking, file.tracking);
   result.sink = merge_sink(result.sink, file.sink);
   result.ingress = merge_ingress(result.ingress, file.ingress);
+  result.clipping = merge_clipping(result.clipping, file.clipping);
 
   result.capture = merge_capture(result.capture, flags.capture);
   result.model = merge_model(result.model, flags.model);
@@ -96,6 +109,7 @@ AppConfig merge(const AppConfig& base, const ConfigOverlay& file, const ConfigOv
   result.tracking = merge_tracking(result.tracking, flags.tracking);
   result.sink = merge_sink(result.sink, flags.sink);
   result.ingress = merge_ingress(result.ingress, flags.ingress);
+  result.clipping = merge_clipping(result.clipping, flags.clipping);
   return result;
 }
 
@@ -137,6 +151,24 @@ Result<void> validate(const AppConfig& config) {
   if (config.ingress.max_clients < 1) {
     return fail(ErrorCode::config_invalid,
                 std::format("ingress.max_clients: must be >= 1, got {}", config.ingress.max_clients));
+  }
+  if (config.clipping.enabled && config.clipping.output_dir.empty()) {
+    return fail(ErrorCode::config_invalid, "clipping.output_dir: required when clipping.enabled");
+  }
+  if (config.clipping.pre_roll_seconds < 0.1 || config.clipping.pre_roll_seconds > 10.0) {
+    return fail(ErrorCode::config_invalid,
+                std::format("clipping.pre_roll_seconds: must be within [0.1, 10], got {}",
+                            config.clipping.pre_roll_seconds));
+  }
+  if (config.clipping.stop_after_ticks < 1) {
+    return fail(ErrorCode::config_invalid,
+                std::format("clipping.stop_after_ticks: must be >= 1, got {}",
+                            config.clipping.stop_after_ticks));
+  }
+  if (config.clipping.bitrate_kbps <= 0) {
+    return fail(ErrorCode::config_invalid,
+                std::format("clipping.bitrate_kbps: must be positive, got {}",
+                            config.clipping.bitrate_kbps));
   }
   return {};
 }

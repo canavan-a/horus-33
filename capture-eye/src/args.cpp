@@ -26,6 +26,16 @@ namespace {
   return value;
 }
 
+[[nodiscard]] Result<double> parse_double(std::string_view flag, std::string_view text) {
+  double value = 0;
+  const auto* end = text.data() + text.size();
+  const auto [ptr, ec] = std::from_chars(text.data(), end, value);
+  if (ec != std::errc{} || ptr != end) {
+    return fail(ErrorCode::config_invalid, std::format("{}: not a number: '{}'", flag, text));
+  }
+  return value;
+}
+
 [[nodiscard]] Result<TargetPolicy> parse_policy(std::string_view text) {
   if (text == "sticky") return TargetPolicy::sticky_largest;
   if (text == "largest") return TargetPolicy::largest_area;
@@ -106,6 +116,16 @@ Output:
   --bitrate KBPS       encoder bitrate (default 4000)
   --no-hw-encode       use libx264 instead of VAAPI
   --vaapi-device PATH  render node for hardware encode (default /dev/dri/renderD128)
+
+Clipping:
+  --clip                  record a clip whenever a person is detected; needs --clip-dir
+  --clip-dir PATH         directory finished clips are written to
+  --clip-admin-socket PATH  listen here for live enable/disable + status
+                            (host-only, off unless given)
+  --clip-preroll SECONDS  seconds of video to keep before the detection instant
+                           (default 1.0)
+  --clip-stop-ticks N     consecutive no-person inference ticks before a clip
+                           stops (default 40)
 
 Modes:
   --list-formats       print what the camera supports, then exit
@@ -280,6 +300,29 @@ Result<Invocation> parse_args(std::span<const std::string_view> args) {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
       o.sink.vaapi_device = *v;
+
+    } else if (arg == "--clip") {
+      o.clipping.enabled = true;
+    } else if (arg == "--clip-dir") {
+      const auto v = value_for(arg);
+      if (!v) return std::unexpected(v.error());
+      o.clipping.output_dir = *v;
+    } else if (arg == "--clip-admin-socket") {
+      const auto v = value_for(arg);
+      if (!v) return std::unexpected(v.error());
+      o.clipping.admin_socket_path = *v;
+    } else if (arg == "--clip-preroll") {
+      const auto v = value_for(arg);
+      if (!v) return std::unexpected(v.error());
+      const auto seconds = parse_double(arg, *v);
+      if (!seconds) return std::unexpected(seconds.error());
+      o.clipping.pre_roll_seconds = *seconds;
+    } else if (arg == "--clip-stop-ticks") {
+      const auto v = value_for(arg);
+      if (!v) return std::unexpected(v.error());
+      const auto n = parse_int(arg, *v);
+      if (!n) return std::unexpected(n.error());
+      o.clipping.stop_after_ticks = *n;
 
     } else {
       return fail(ErrorCode::config_invalid, std::format("unknown flag: '{}'", arg));

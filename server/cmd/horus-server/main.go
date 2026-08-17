@@ -20,14 +20,19 @@ func main() {
 	listen := flag.String("listen", ":8080", "address to serve the API on")
 	replay := flag.String("replay", "",
 		"path to persist desired control values and replay them on device hello; empty disables replay")
+	clipsDir := flag.String("clips-dir", "",
+		"directory capture-eye writes finished clips to; empty disables clip listing/serving")
+	clipAdminSocket := flag.String("clip-admin-socket", "",
+		"path to capture-eye's clip admin socket; empty disables live clip toggling/status")
 	flag.Parse()
 
 	lnk := link.OpenUnix(*socket)
 	defer lnk.Close()
 
-	server := api.New(lnk, *replay)
+	server := api.New(lnk, *replay, *clipAdminSocket, *clipsDir)
 
-	log.Printf("horus-server: relay=%s listen=%s replay=%q", *socket, *listen, *replay)
+	log.Printf("horus-server: relay=%s listen=%s replay=%q clipsDir=%q clipAdminSocket=%q",
+		*socket, *listen, *replay, *clipsDir, *clipAdminSocket)
 	if err := http.ListenAndServe(*listen, server.Routes()); err != nil {
 		log.Fatal(err)
 	}

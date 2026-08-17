@@ -13,8 +13,23 @@
 #     unconditionally — capture-eye is the one piece where reproducibility
 #     (the pinned model hash) actually matters, and it stays a real derivation.
 #   - Nothing machine-specific has a default. `configFile` must exist and be
-#     correct; `repoPath` must point at a real checkout. Both fail loudly
-#     (an eval error, or capture-eye's own config errors) rather than guess.
+#     correct. `repoUrl` has no default either — a wrong guess is worse than
+#     an eval error.
+#   - horus-server/horus-web are built from a checkout the module clones and
+#     updates *itself* (system.activationScripts.horusRepoSync, `git clone`/
+#     `git fetch` against `repoUrl`/`repoRef`) rather than one you maintain by
+#     hand — same "no hash, just always run" reasoning as the build steps
+#     below: activationScripts run outside the Nix sandbox with real network
+#     access, exactly like `npm ci`/`go build` already have. This keeps
+#     horus-33 a separate flake/repo (never folded into the consuming flake's
+#     own tree) while still needing zero manual `git clone` on the target
+#     machine — point `repoUrl` at this repo and the module does the rest.
+#   - `clipsDir` has the same dual-source-of-truth tradeoff as `configFile`:
+#     Nix creates the directory and tells horus-server about it, but capture-
+#     eye only writes clips there if the user's own configFile JSON sets
+#     clipping.output_dir (and clipping.admin_socket_path, for live toggling)
+#     to match — Nix cannot enforce that consistency across a file it doesn't
+#     render.
 { config, lib, pkgs, ... }:
 
 let
@@ -22,8 +37,10 @@ let
   webDist = "/var/lib/horus-web/dist";
   serverBin = "/var/lib/horus-server/bin/horus-server";
   goCache = "/var/cache/horus-go";
+  repoDir = "/opt/horus-33";
   runtimeDir = "horus";
   controlSocket = "/run/${runtimeDir}/control.sock";
+  clipAdminSocket = "/run/${runtimeDir}/clip-admin.sock";
 
   capturePkg = pkgs.callPackage ../nix/capture-eye.nix { };
 
@@ -66,12 +83,21 @@ in
       '';
     };
 
-    repoPath = lib.mkOption {
-      type = lib.types.path;
+    repoUrl = lib.mkOption {
+      type = lib.types.str;
       description = ''
-        Path to a checkout of this repo on the target machine (needs web/).
+        Git URL of this repo (e.g. "https://github.com/canavan-a/horus-33.git"
+        or a local "file:///..." path). The module clones/updates it itself into
+        ${repoDir} on every activation — no manual checkout to maintain, and
+        no vendorHash/npmDepsHash, same tradeoff the build steps already make.
         No default — a wrong guess here is worse than an eval error.
       '';
+    };
+
+    repoRef = lib.mkOption {
+      type = lib.types.str;
+      default = "main";
+      description = "Branch, tag, or commit to build from.";
     };
 
     listenAddress = lib.mkOption {
@@ -101,11 +127,31 @@ in
         Set to null to disable replay.
       '';
     };
+
+    clipsDir = lib.mkOption {
+      type = lib.types.path;
+      default = "/var/lib/horus-capture-eye/clips";
+      description = ''
+        Directory capture-eye writes finished clips to and horus-server serves
+        them from. Nix only creates this directory and passes its path to
+        horus-server via --clips-dir; capture-eye itself only writes here if
+        your configFile's "clipping.output_dir" key is set to this same path
+        — Nix cannot enforce that consistency, the same tradeoff configFile
+        itself already makes (see the module's top comment).
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
     # --- device access: video capture, the serial port, VAAPI ---
     users.groups.horus = { };
+    # Narrowly scoped to just clip files, same one-group-per-boundary pattern
+    # as "horus" above (relay socket) and "horus-server" below (its own data
+    # dir) — capture-eye has no dedicated User= (runs effectively as root, for
+    # stable /dev/video*, /dev/ttyACM0, /dev/dri access), so the only way for
+    # horus-server's non-root user to read clips capture-eye writes is via a
+    # shared supplementary group.
+    users.groups.horus-clips = { };
     systemd.tmpfiles.rules = [
       "d ${webDist} 0755 root root -"
       "d /etc/horus 0755 root root -"
@@ -115,7 +161,34 @@ in
       "d /var/lib/horus-server 0750 horus-server horus-server -"
       "d /var/lib/horus-server/bin 0755 root root -"
       "d ${goCache} 0755 root root -"
+      # setgid (leading 2): every file capture-eye (root-ish) creates here
+      # inherits group horus-clips regardless of capture-eye's own primary
+      # group, so horus-server's read access doesn't depend on capture-eye
+      # remembering to chgrp anything itself.
+      "d ${cfg.clipsDir} 2750 root horus-clips -"
+      # git clone creates ${repoDir} itself; only its parent needs to exist
+      # first, and /opt isn't guaranteed to already be there on NixOS.
+      "d /opt 0755 root root -"
     ];
+
+    # Clones (first activation) or fast-forwards (every activation after)
+    # ${repoDir} from repoUrl/repoRef — this is what lets horus-server/
+    # horus-web build below without anyone maintaining a checkout by hand.
+    # Runs before both build steps (their `deps`), and — like them — outside
+    # the Nix sandbox, so real network access here is expected, not a hack.
+    system.activationScripts.horusRepoSync = {
+      deps = [ "specialfs" ];
+      text = ''
+        export PATH=${pkgs.git}/bin:${pkgs.bash}/bin:$PATH
+        if [ ! -d ${repoDir}/.git ]; then
+          git clone ${cfg.repoUrl} ${repoDir}
+        fi
+        # fetch+checkout FETCH_HEAD (not `pull`/`--branch`) so repoRef can be
+        # a branch, a tag, or a bare commit SHA — all fetch the same way.
+        git -C ${repoDir} fetch origin ${cfg.repoRef}
+        git -C ${repoDir} checkout --force FETCH_HEAD
+      '';
+    };
 
     # Lets a non-root capture-eye service (and any relay client in the
     # "horus" group) use the camera and the ESP32's CDC port without udev
@@ -126,6 +199,14 @@ in
     '';
 
     # --- capture-eye: owns the camera, the serial port, and the relay socket ---
+    # `systemctl status horus-capture-eye` shows the exit code straight in
+    # "code=exited, status=N" — capture-eye/docs/config.md's "Exit codes"
+    # table decodes it without opening the journal: 10 = no camera / camera
+    # rejected the request, 11 = no ESP32 / serial link failed to open,
+    # 2 = bad config, 1 = anything else. Restart=always + RestartSec=2 below
+    # keep relaunching it regardless of which one it was — this only makes
+    # *why* visible at a glance, it doesn't change what's fatal or how fast
+    # it retries.
     systemd.services.horus-capture-eye = {
       description = "horus-33 vision pipeline (capture, inference, tracking, control relay)";
       after = [ "horus-mediamtx.service" "network.target" ];
@@ -140,7 +221,7 @@ in
         # startup (e.g. MediaMTX not up yet) — Restart=always is what makes
         # that self-heal rather than requiring manual intervention.
         DynamicUser = false; # needs stable access to /dev/video*, /dev/ttyACM0, /dev/dri
-        SupplementaryGroups = [ "video" "dialout" "render" ];
+        SupplementaryGroups = [ "video" "dialout" "render" "horus-clips" ];
         RuntimeDirectory = runtimeDir;
         RuntimeDirectoryMode = "0770";
         RuntimeDirectoryPreserve = true;
@@ -162,13 +243,13 @@ in
     # goCache persists the module/build cache across rebuilds so this stays
     # fast after the first run; only go.sum changes trigger real downloads.
     system.activationScripts.horusServerBuild = {
-      deps = [ "specialfs" ];
+      deps = [ "horusRepoSync" ];
       text = ''
         export PATH=${pkgs.go}/bin:${pkgs.bash}/bin:$PATH
         export HOME=${goCache}
         export GOCACHE=${goCache}/build
         export GOPATH=${goCache}/path
-        cd ${cfg.repoPath}/server
+        cd ${repoDir}/server
         ${pkgs.go}/bin/go build -o ${serverBin}.new ./cmd/horus-server
         mv -f ${serverBin}.new ${serverBin}
         ${pkgs.systemd}/bin/systemctl try-restart horus-server.service || true
@@ -188,12 +269,14 @@ in
         ExecStart = "${serverBin}"
           + " --socket ${controlSocket}"
           + " --listen 127.0.0.1:8090"
+          + " --clips-dir ${cfg.clipsDir}"
+          + " --clip-admin-socket ${clipAdminSocket}"
           + lib.optionalString (cfg.replayFile != null) " --replay ${cfg.replayFile}";
         Restart = "always";
         RestartSec = 2;
         User = "horus-server";
         Group = "horus-server";
-        SupplementaryGroups = [ "horus" ]; # to open the relay socket capture-eye owns
+        SupplementaryGroups = [ "horus" "horus-clips" ]; # relay socket + clip files, both owned by capture-eye
       };
     };
 
@@ -214,10 +297,10 @@ in
     # npmDepsHash to keep in sync, and it can never silently go stale. Costs a
     # `npm ci && npm run build` on every `nixos-rebuild switch`/boot.
     system.activationScripts.horusWebBuild = {
-      deps = [ "specialfs" ];
+      deps = [ "horusRepoSync" ];
       text = ''
         export PATH=${pkgs.nodejs_22}/bin:${pkgs.bash}/bin:$PATH
-        cd ${cfg.repoPath}/web
+        cd ${repoDir}/web
         ${pkgs.nodejs_22}/bin/npm ci
         ${pkgs.nodejs_22}/bin/npm run build
         rm -rf ${webDist}/*

@@ -52,6 +52,7 @@ add_library(capture_eye_core STATIC
   src/track_message.cpp
   src/target_selector.cpp
   src/emission_policy.cpp
+  src/clip_policy.cpp
   src/yolo_output.cpp
   src/metrics.cpp
 )
@@ -68,7 +69,10 @@ add_library(capture_eye_io STATIC
   src/overlay.cpp
   src/preview_sink.cpp
   src/snapshot_sink.cpp
+  src/h264_encoder.cpp
   src/h264_sink.cpp
+  src/clip_sink.cpp
+  src/clip_admin.cpp
   src/pipeline.cpp
   src/onnx_detector.cpp
   src/serial_port.cpp
@@ -108,6 +112,8 @@ add_executable(capture-eye-tests
   tests/emission_policy_test.cpp
   tests/letterbox_test.cpp
   tests/frame_mat_test.cpp
+  tests/clip_policy_test.cpp
+  tests/error_test.cpp
   tests/yolo_output_test.cpp
 )
 target_link_libraries(capture-eye-tests

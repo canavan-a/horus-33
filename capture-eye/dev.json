@@ -2,5 +2,11 @@
   "capture": { "device": "/dev/video2", "width": 1280, "height": 720, "fourcc": "MJPG", "fps": 30 },
   "serial":  { "port": "/dev/ttyACM1" },
   "ingress": { "socket_path": "/tmp/horus-control.sock" },
-  "sink":    { "rtsp_url": "rtsp://127.0.0.1:8554/eye" }
+  "sink":    { "rtsp_url": "rtsp://127.0.0.1:8554/eye" },
+  "clipping": {
+    "enabled": true,
+    "output_dir": "/home/nixos/canavan-a/horus-33/capture-eye/dev-clips",
+    "admin_socket_path": "/tmp/horus-clip-admin.sock",
+    "hardware_encode": false
+  }
 }

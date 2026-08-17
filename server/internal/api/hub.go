@@ -15,12 +15,13 @@ import (
 // error — one JSON envelope, discriminated by Type, matching how the browser
 // naturally wants to switch on incoming messages.
 type wsEvent struct {
-	Type       string            `json:"type"` // "link" | "hello" | "descriptor" | "state" | "error"
+	Type       string            `json:"type"` // "link" | "hello" | "descriptor" | "state" | "error" | "clipping"
 	Status     string            `json:"status,omitempty"`
 	Hello      *proto.Hello      `json:"hello,omitempty"`
 	Descriptor *proto.Descriptor `json:"descriptor,omitempty"`
 	State      *proto.State      `json:"state,omitempty"`
 	Error      *proto.Err        `json:"error,omitempty"`
+	Clipping   *ClippingStatus   `json:"clipping,omitempty"`
 }
 
 // outboundCapacity bounds a client's backlog. A browser tab that stops

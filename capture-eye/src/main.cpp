@@ -11,6 +11,8 @@
 #include <vector>
 
 #include "args.h"
+#include "clip_admin.h"
+#include "clip_sink.h"
 #include "config_file.h"
 #include "detector.h"
 #include "device_link.h"
@@ -139,20 +141,35 @@ extern "C" void handle_interrupt(int) {
   }
 
   // The encoder needs the real decoded frame size, which is only known once the
-  // camera has negotiated a format.
-  const auto late_sinks = [&config](int width, int height,
-                                    int fps) -> Result<std::vector<FrameSink>> {
+  // camera has negotiated a format. clip_runtime escapes the lambda so a
+  // ClipAdmin can be bound to it afterward, once the pipeline is up.
+  std::shared_ptr<ClipRuntime> clip_runtime;
+  const auto late_sinks = [&config, &clip_runtime](int width, int height,
+                                                   int fps) -> Result<std::vector<FrameSink>> {
     std::vector<FrameSink> sinks;
     if (!config.sink.rtsp_url.empty()) {
       auto h264 = make_h264_rtsp_sink(config.sink, width, height, fps);
       if (!h264) return std::unexpected(h264.error());
       sinks.push_back(std::move(*h264));
     }
+    if (config.clipping.enabled || !config.clipping.output_dir.empty()) {
+      auto clip = make_clip_sink(config.clipping, width, height, fps);
+      if (!clip) return std::unexpected(clip.error());
+      clip_runtime = clip->runtime;
+      sinks.push_back(std::move(clip->sink));
+    }
     return sinks;
   };
 
   auto pipeline = Pipeline::create(config, std::move(stages), late_sinks);
   if (!pipeline) return std::unexpected(pipeline.error());
+
+  std::unique_ptr<ClipAdmin> clip_admin;
+  if (clip_runtime && !config.clipping.admin_socket_path.empty()) {
+    auto admin = ClipAdmin::create(config.clipping.admin_socket_path, clip_runtime);
+    if (!admin) return std::unexpected(admin.error());
+    clip_admin = std::move(*admin);
+  }
 
   std::stop_source stop;
   std::jthread watchdog{[&stop](std::stop_token token) {
@@ -248,7 +265,7 @@ int main(int argc, char** argv) {
   const auto result = capture_eye::run(*inv);
   if (!result) {
     std::fprintf(stderr, "capture-eye: %s\n", capture_eye::to_string(result.error()).c_str());
-    return 1;
+    return capture_eye::exit_code_for(result.error().code);
   }
   return *result;
 }

@@ -45,6 +45,7 @@ models/
 captures/
 *.mp4
 *.avi
+/capture-eye/dev-clips/
 
 # ---- Secrets / local config ----
 .env

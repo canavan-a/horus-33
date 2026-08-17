@@ -1,7 +1,9 @@
 import { useCallback, useState } from 'react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useHorus } from '@/hooks/useHorus'
 import { ControlPanel } from '@/components/ControlPanel'
 import { VideoPanel } from '@/components/VideoPanel'
+import { ClipsPanel } from '@/components/ClipsPanel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { estop } from '@/lib/api'
@@ -27,9 +29,11 @@ function LinkBadge({ status }: { status: LinkStatus }) {
 }
 
 function App() {
-  const { linkStatus, linkError, descriptor, state } = useHorus()
+  const { linkStatus, linkError, descriptor, state, clipping } = useHorus()
   const [stopping, setStopping] = useState(false)
   const [stopError, setStopError] = useState<string | undefined>(undefined)
+  const [view, setView] = useState<'controls' | 'clips'>('controls')
+  const [controlsCollapsed, setControlsCollapsed] = useState(false)
 
   const handleEstop = useCallback(() => {
     setStopping(true)
@@ -48,9 +52,21 @@ function App() {
           <h1 className="truncate text-base font-semibold sm:text-lg">horus-33</h1>
           <LinkBadge status={linkStatus} />
         </div>
-        <Button variant="destructive" size="sm" onClick={handleEstop} disabled={stopping}>
-          E-STOP
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={view === 'controls' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setView('controls')}
+          >
+            controls
+          </Button>
+          <Button variant={view === 'clips' ? 'default' : 'outline'} size="sm" onClick={() => setView('clips')}>
+            clips
+          </Button>
+          <Button variant="destructive" size="sm" onClick={handleEstop} disabled={stopping}>
+            E-STOP
+          </Button>
+        </div>
       </header>
 
       {linkError && (
@@ -65,20 +81,40 @@ function App() {
       <main className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
         <VideoPanel />
 
-        {!descriptor && (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            waiting for the device descriptor…
-          </p>
-        )}
+        {view === 'controls' ? (
+          <>
+            {!descriptor && (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                waiting for the device descriptor…
+              </p>
+            )}
 
-        {/* Single column on phones; two columns once there is room, since a
-            control panel's fields (sliders + numeric entry) want width more
-            than a phone screen wants density. */}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {descriptor?.controls.map((control) => (
-            <ControlPanel key={control.id} control={control} values={state[control.id] ?? {}} />
-          ))}
-        </div>
+            {descriptor && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="self-start"
+                onClick={() => setControlsCollapsed((c) => !c)}
+              >
+                {controlsCollapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+                controls
+              </Button>
+            )}
+
+            {!controlsCollapsed && (
+              // Single column on phones; two columns once there is room, since a
+              // control panel's fields (sliders + numeric entry) want width more
+              // than a phone screen wants density.
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {descriptor?.controls.map((control) => (
+                  <ControlPanel key={control.id} control={control} values={state[control.id] ?? {}} />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <ClipsPanel clipping={clipping} />
+        )}
       </main>
     </div>
   )
