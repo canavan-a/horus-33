@@ -58,8 +58,9 @@ let
     # forwards the other's traffic. See the plan's M10 "Note on UDP".
     webrtcLocalUDPAddress = ":8189";
     webrtcLocalTCPAddress = ":8189";
-    # No third-party ICE server ever sees the stream — LAN/loopback only.
-    webrtcICEServers2 = [ ];
+    # Google's public STUN server for NAT traversal outside the LAN. It only
+    # learns candidate addresses (for hole-punching), never the stream itself.
+    webrtcICEServers2 = [ "stun:stun.l.google.com:19302" ];
 
     hls = false;
     rtmp = false;
