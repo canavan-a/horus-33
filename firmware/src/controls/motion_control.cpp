@@ -27,8 +27,11 @@ const Pins PINS[AXIS_COUNT] = {
     {AXIS_Y_EN, AXIS_Y_STEP, AXIS_Y_DIR, AXIS_Y_TX, 2},
 };
 
-constexpr uint8_t LEDC_BITS = 8;
-constexpr uint32_t LEDC_DUTY = 1u << (LEDC_BITS - 1); // 50%
+// Duty resolution is chosen per frequency by dutyBitsFor(); these bound it.
+// LEDC_SRC_HZ is the APB clock the peripheral divides down.
+constexpr uint32_t LEDC_SRC_HZ = 80000000;
+constexpr uint8_t LEDC_MAX_BITS = 14;
+constexpr uint8_t LEDC_BITS = 8; // only for the idle setup before a rate is known
 
 constexpr TickType_t TICK = pdMS_TO_TICKS(10); // 100 Hz
 
@@ -39,6 +42,11 @@ constexpr uint32_t DIR_SETUP_US = 20;
 // Below this the LEDC timer struggles to synthesise a clean rate and the motor
 // would barely creep, so a smaller command is treated as "stop".
 constexpr float MIN_RUN_SPS = 10.0f;
+
+// How fast the commanded rate may change, in steps/s per second. Low enough
+// that the rotor keeps up with the field (an instant jump just buzzes), high
+// enough that the PID still feels responsive: a full-scale swing takes ~0.3 s.
+constexpr float ACCEL_SPS2 = 12000.0f;
 
 // How close to `home` counts as home. Without an encoder the position is
 // dead-reckoned, so insisting on an exact landing would hunt forever.
@@ -133,19 +141,32 @@ float homeStep(const AxisState &a, int32_t pos, uint16_t home_sps) {
 
 void stopPulses(const Pins &p) { ledcWrite(p.ledc_ch, 0); }
 
-// Returns the frequency actually programmed. LEDC cannot synthesise arbitrarily
-// low frequencies at this resolution; when it refuses we leave the axis stopped
-// rather than silently running at some other speed.
+// LEDC derives the step frequency by dividing an 80 MHz clock by
+// (2^bits * freq), and the divider is finite — so a fixed duty resolution puts
+// a floor under the frequency. At 8 bits that floor is ~305 Hz, which silently
+// swallowed every jog below 305 sps and, worse, made the PID output collapse to
+// a dead stop instead of a slow crawl near the target. Picking the resolution
+// from the frequency removes the floor: low rates get more duty bits (which
+// they can afford), high rates get fewer.
+uint8_t dutyBitsFor(uint32_t freq) {
+	uint8_t bits = LEDC_MAX_BITS;
+	while (bits > 1 && ((uint32_t)1 << bits) > (LEDC_SRC_HZ / freq)) bits--;
+	return bits;
+}
+
+// Returns the frequency actually programmed, or 0 if LEDC refused it — in which
+// case the axis stays stopped rather than silently running at some other speed.
 uint32_t startPulses(const Pins &p, uint32_t freq) {
 	if (freq == 0) {
 		stopPulses(p);
 		return 0;
 	}
-	if (ledcSetup(p.ledc_ch, freq, LEDC_BITS) == 0) {
+	const uint8_t bits = dutyBitsFor(freq);
+	if (ledcSetup(p.ledc_ch, freq, bits) == 0) {
 		stopPulses(p);
 		return 0;
 	}
-	ledcWrite(p.ledc_ch, LEDC_DUTY);
+	ledcWrite(p.ledc_ch, 1u << (bits - 1)); // 50% at this resolution
 	return freq;
 }
 
@@ -157,6 +178,9 @@ void motionTask(void *) {
 	// it recovers the position to well under a step over a long session.
 	float posAccum[AXIS_COUNT];
 	uint16_t posEpoch[AXIS_COUNT];
+	// Rate currently applied to the hardware, which the slew limiter walks
+	// towards the commanded rate rather than jumping.
+	float rateNow[AXIS_COUNT];
 
 	for (size_t i = 0; i < AXIS_COUNT; i++) {
 		const Pins &p = PINS[i];
@@ -176,6 +200,7 @@ void motionTask(void *) {
 		applied[i] = {false, false, 0};
 		pid[i].reset();
 		posAccum[i] = 0.0f;
+		rateNow[i] = 0.0f;
 		posEpoch[i] = s.axis[i].pos_epoch;
 	}
 
@@ -244,6 +269,27 @@ void motionTask(void *) {
 				}
 			} else {
 				pid[i].reset();
+			}
+
+			// Slew-limit the rate. A stepper asked to jump straight from one
+			// frequency to another loses sync with the field and buzzes instead of
+			// turning, so every change — a manual speed edit, a PID swing, a
+			// direction reversal — is ramped at ACCEL_SPS2. Crossing zero ramps
+			// down to a stop first, which is what makes the DIR flip below safe.
+			if (!enabled) {
+				// A de-energised axis has no momentum to respect; drop the ramp so
+				// re-enabling starts from a standstill rather than mid-profile.
+				rateNow[i] = 0.0f;
+				cmd = 0.0f;
+			} else {
+				float step = ACCEL_SPS2 * dt;
+				float prev = rateNow[i];
+				float goal = cmd;
+				if ((prev > 0.0f && goal < 0.0f) || (prev < 0.0f && goal > 0.0f)) goal = 0.0f;
+				if (goal > prev + step) goal = prev + step;
+				else if (goal < prev - step) goal = prev - step;
+				rateNow[i] = goal;
+				cmd = goal;
 			}
 
 			if (fabsf(cmd) < MIN_RUN_SPS) cmd = 0.0f;
