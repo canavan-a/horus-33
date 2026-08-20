@@ -43,6 +43,11 @@ struct AxisState {
 
 	float kp, ki, kd;   // PID gains, output in steps/s per unit of frame error
 	uint16_t max_sps;   // clamp on the PID output
+	float target_offset; // PID setpoint, in the same normalized [-1,1] frame
+	                      // coords as Target.x/y; 0 = frame-centred (default).
+	                      // Clamped to a conservative sub-range in the
+	                      // descriptor, not the full [-1,1], so there is
+	                      // always real margin before the frame edge.
 	int32_t home;       // position to return to when the target is lost, in steps
 	int32_t pos_set;    // requested new value for the position counter
 	uint16_t pos_epoch; // bumped on each pos_set so the task acts on it once

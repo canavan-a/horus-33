@@ -71,9 +71,9 @@ Snapshot state{MANUAL,
                0.02f, // deadband
                800,   // home_sps
                {
-                   // enable run dir invert speed  auto_deenergize  kp ki kd  max  home pos_set epoch
-                   {false, false, FWD, false, 400, false, 1200.0f, 0.0f, 0.0f, 4000, 0, 0, 0},
-                   {false, false, FWD, false, 400, false, 1200.0f, 0.0f, 0.0f, 4000, 0, 0, 0},
+                   // enable run dir invert speed  auto_deenergize  kp ki kd  max  offset home pos_set epoch
+                   {false, false, FWD, false, 400, false, 1200.0f, 0.0f, 0.0f, 4000, 0.0f, 0, 0, 0},
+                   {false, false, FWD, false, 400, false, 1200.0f, 0.0f, 0.0f, 4000, 0.0f, 0, 0, 0},
                }};
 
 // Published by the motion task for the dispatch task to read back.
@@ -275,7 +275,8 @@ void motionTask(void *) {
 					pid[i].reset();
 					cmd = homeStep(a, posSteps[i].load(std::memory_order_relaxed), s.home_sps);
 				} else if (fresh) {
-					float err = (i == AXIS_X) ? target.x : target.y;
+					float raw = (i == AXIS_X) ? target.x : target.y;
+					float err = raw - a.target_offset;
 					cmd = pidStep(pid[i], a, err, s.deadband, dt);
 				} else {
 					// Lost, or never seen: park on the configured home position.
@@ -440,6 +441,11 @@ constexpr double POS_MIN = -1000000, POS_MAX = 1000000, POS_STEP = 10;
 constexpr double LOST_MIN = 100, LOST_MAX = 60000, LOST_STEP = 100;
 constexpr double UNIT_MIN = 0, UNIT_MAX = 1, UNIT_STEP = 0.05;
 constexpr double BAND_MIN = 0, BAND_MAX = 0.5, BAND_STEP = 0.01;
+// Deliberately narrower than target.x/y's full [-1,1]: a setpoint near the
+// frame edge has less margin before the target exits frame entirely, and
+// detection boxes get noisier out there (lens distortion, truncation), both
+// of which can look like "the PID never settles" even when gains are fine.
+constexpr double OFFSET_MIN = -0.5, OFFSET_MAX = 0.5, OFFSET_STEP = 0.05;
 
 double clampd(double v, double lo, double hi) {
 	if (v < lo) return lo;
@@ -556,6 +562,8 @@ void AxisControl::describe(JsonObject out) const {
 	desc::number(fields, "kd", "Kd", GAIN_MIN, GAIN_MAX, GAIN_STEP, "", 0);
 	desc::number(fields, "max_sps", "PID max speed", SPEED_MIN, SPEED_MAX,
 	             SPEED_STEP, "sps", 4000);
+	desc::number(fields, "target_offset", "Target offset", OFFSET_MIN, OFFSET_MAX,
+	             OFFSET_STEP, "", 0.0);
 	desc::number(fields, "home", "Home", POS_MIN, POS_MAX, POS_STEP, "st", 0);
 	desc::number(fields, "pos", "Position", POS_MIN, POS_MAX, POS_STEP, "st", 0);
 }
@@ -601,6 +609,10 @@ bool AxisControl::apply(JsonObjectConst v, char *err, size_t errLen) {
 			if (!numField(kv.value(), key, SPEED_MIN, SPEED_MAX, n, err, errLen))
 				return false;
 			a.max_sps = (uint16_t)n;
+		} else if (strcmp(key, "target_offset") == 0) {
+			if (!numField(kv.value(), key, OFFSET_MIN, OFFSET_MAX, n, err, errLen))
+				return false;
+			a.target_offset = (float)n;
 		} else if (strcmp(key, "home") == 0) {
 			if (!numField(kv.value(), key, POS_MIN, POS_MAX, n, err, errLen))
 				return false;
@@ -635,6 +647,7 @@ void AxisControl::emitState(JsonObject out) const {
 	out["ki"] = a.ki;
 	out["kd"] = a.kd;
 	out["max_sps"] = a.max_sps;
+	out["target_offset"] = a.target_offset;
 	out["home"] = a.home;
 	out["pos"] = motion::position(index_);
 }
