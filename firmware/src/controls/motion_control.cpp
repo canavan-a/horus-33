@@ -56,6 +56,11 @@ constexpr int32_t HOME_TOL_STEPS = 4;
 // Gives a gentle taper into the target instead of a hard stop.
 constexpr float HOME_KP = 3.0f;
 
+// How long to hold an axis at zero rate after re-energising before letting it
+// move, so the TMC2209 has current established before the first STEP edge
+// instead of stepping into a still-powering-up driver.
+constexpr uint32_t REENERGIZE_SETTLE_MS = 5;
+
 QueueHandle_t mailbox = nullptr;
 QueueHandle_t targetBox = nullptr;
 
@@ -66,9 +71,9 @@ Snapshot state{MANUAL,
                0.02f, // deadband
                800,   // home_sps
                {
-                   // enable run dir invert speed  kp ki kd  max  home pos_set epoch
-                   {false, false, FWD, false, 400, 1200.0f, 0.0f, 0.0f, 4000, 0, 0, 0},
-                   {false, false, FWD, false, 400, 1200.0f, 0.0f, 0.0f, 4000, 0, 0, 0},
+                   // enable run dir invert speed  auto_deenergize  kp ki kd  max  home pos_set epoch
+                   {false, false, FWD, false, 400, false, 1200.0f, 0.0f, 0.0f, 4000, 0, 0, 0},
+                   {false, false, FWD, false, 400, false, 1200.0f, 0.0f, 0.0f, 4000, 0, 0, 0},
                }};
 
 // Published by the motion task for the dispatch task to read back.
@@ -181,6 +186,12 @@ void motionTask(void *) {
 	// Rate currently applied to the hardware, which the slew limiter walks
 	// towards the commanded rate rather than jumping.
 	float rateNow[AXIS_COUNT];
+	// True while an axis is idle at home with auto_deenergize on, i.e. EN is
+	// being held off to save heat rather than because the user disabled it.
+	bool parkedIdle[AXIS_COUNT];
+	// A timestamp to hold cmd at zero until, set when an axis just came back
+	// out of parkedIdle -- see REENERGIZE_SETTLE_MS.
+	uint32_t settleUntilMs[AXIS_COUNT];
 
 	for (size_t i = 0; i < AXIS_COUNT; i++) {
 		const Pins &p = PINS[i];
@@ -201,6 +212,8 @@ void motionTask(void *) {
 		pid[i].reset();
 		posAccum[i] = 0.0f;
 		rateNow[i] = 0.0f;
+		parkedIdle[i] = false;
+		settleUntilMs[i] = 0;
 		posEpoch[i] = s.axis[i].pos_epoch;
 	}
 
@@ -258,6 +271,9 @@ void motionTask(void *) {
 				} else if (s.mode == MANUAL) {
 					pid[i].reset();
 					cmd = a.run ? (a.dir == REV ? -(float)a.speed : (float)a.speed) : 0.0f;
+				} else if (s.mode == HOME) {
+					pid[i].reset();
+					cmd = homeStep(a, posSteps[i].load(std::memory_order_relaxed), s.home_sps);
 				} else if (fresh) {
 					float err = (i == AXIS_X) ? target.x : target.y;
 					cmd = pidStep(pid[i], a, err, s.deadband, dt);
@@ -266,10 +282,25 @@ void motionTask(void *) {
 					pid[i].reset();
 					cmd = homeStep(a, posSteps[i].load(std::memory_order_relaxed),
 					               s.home_sps);
+					// homeStep returns exactly 0 once within HOME_TOL_STEPS, i.e.
+					// arrived and idle -- that's the signal to let the driver cool
+					// instead of holding position with current.
+					if (a.auto_deenergize && cmd == 0.0f) parkedIdle[i] = true;
 				}
 			} else {
 				pid[i].reset();
 			}
+
+			if (parkedIdle[i] && (s.mode != PID || fresh || !a.auto_deenergize)) {
+				// Leaving the idle park, for any reason: a target came back, mode
+				// changed, or auto_deenergize was turned off mid-park. Re-energise
+				// now but hold at zero rate for the settle window below rather than
+				// commanding motion into a driver that isn't powered yet.
+				parkedIdle[i] = false;
+				settleUntilMs[i] = millis() + REENERGIZE_SETTLE_MS;
+			}
+			if (parkedIdle[i]) enabled = false;
+			if (millis() < settleUntilMs[i]) cmd = 0.0f;
 
 			// Slew-limit the rate. A stepper asked to jump straight from one
 			// frequency to another loses sync with the field and buzzes instead of
@@ -368,6 +399,7 @@ const char *modeName(Mode m) {
 	switch (m) {
 	case MANUAL: return "manual";
 	case PID: return "pid";
+	case HOME: return "home";
 	}
 	return "manual";
 }
@@ -376,6 +408,7 @@ bool parseMode(const char *s, Mode &out) {
 	if (s == nullptr) return false;
 	if (strcmp(s, "manual") == 0) { out = MANUAL; return true; }
 	if (strcmp(s, "pid") == 0) { out = PID; return true; }
+	if (strcmp(s, "home") == 0) { out = HOME; return true; }
 	return false;
 }
 
@@ -398,7 +431,7 @@ bool parseDir(const char *s, Dir &out) {
 
 namespace {
 
-const char *const MODE_OPTIONS[] = {"manual", "pid"};
+const char *const MODE_OPTIONS[] = {"manual", "pid", "home"};
 const char *const DIR_OPTIONS[] = {"fwd", "rev"};
 
 constexpr double SPEED_MIN = 0, SPEED_MAX = 20000, SPEED_STEP = 50;
@@ -443,7 +476,7 @@ void MotionControl::describe(JsonObject out) const {
 	out["label"] = label();
 	JsonArray fields = out["fields"].to<JsonArray>();
 
-	desc::enumeration(fields, "mode", "Mode", MODE_OPTIONS, 2, "manual");
+	desc::enumeration(fields, "mode", "Mode", MODE_OPTIONS, 3, "manual");
 	desc::boolean(fields, "estop", "E-stop", false);
 	desc::number(fields, "lost_ms", "Lost timeout", LOST_MIN, LOST_MAX, LOST_STEP,
 	             "ms", 1000);
@@ -515,6 +548,7 @@ void AxisControl::describe(JsonObject out) const {
 	desc::boolean(fields, "run", "Run", false);
 	desc::enumeration(fields, "dir", "Direction", DIR_OPTIONS, 2, "fwd");
 	desc::boolean(fields, "invert_dir", "Invert polarity", false);
+	desc::boolean(fields, "auto_deenergize", "De-energize when idle at home", false);
 	desc::number(fields, "speed", "Jog speed", SPEED_MIN, SPEED_MAX, SPEED_STEP,
 	             "sps", 400);
 	desc::number(fields, "kp", "Kp", GAIN_MIN, GAIN_MAX, GAIN_STEP, "sps", 1200);
@@ -540,6 +574,8 @@ bool AxisControl::apply(JsonObjectConst v, char *err, size_t errLen) {
 			if (!boolField(kv.value(), key, a.run, err, errLen)) return false;
 		} else if (strcmp(key, "invert_dir") == 0) {
 			if (!boolField(kv.value(), key, a.invert_dir, err, errLen)) return false;
+		} else if (strcmp(key, "auto_deenergize") == 0) {
+			if (!boolField(kv.value(), key, a.auto_deenergize, err, errLen)) return false;
 		} else if (strcmp(key, "dir") == 0) {
 			if (!motion::parseDir(kv.value().as<const char *>(), a.dir)) {
 				snprintf(err, errLen, "bad dir");
@@ -593,6 +629,7 @@ void AxisControl::emitState(JsonObject out) const {
 	out["run"] = a.run;
 	out["dir"] = motion::dirName(a.dir);
 	out["invert_dir"] = a.invert_dir;
+	out["auto_deenergize"] = a.auto_deenergize;
 	out["speed"] = a.speed;
 	out["kp"] = a.kp;
 	out["ki"] = a.ki;

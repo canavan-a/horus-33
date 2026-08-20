@@ -7,8 +7,12 @@
 namespace motion {
 
 // Which loop owns the step rate. The switch is global: it governs every axis at
-// once, so the machine can never be half manual and half servoed.
-enum Mode : uint8_t { MANUAL = 0, PID };
+// once, so the machine can never be half manual and half servoed. HOME is a
+// third loop, not a PID sub-state: it always seeks `home` regardless of
+// whether a target is currently being tracked, so a "go home" request works
+// the same whether the machine was idle, jogging, or actively centring on
+// something.
+enum Mode : uint8_t { MANUAL = 0, PID, HOME };
 
 enum Dir : uint8_t { FWD = 0, REV };
 
@@ -33,6 +37,9 @@ struct AxisState {
 	Dir dir;         // requested travel direction (manual mode only)
 	bool invert_dir; // software polarity; applies to manual and PID alike
 	uint16_t speed;  // manual jog rate, steps/s
+	bool auto_deenergize; // in PID mode, drop EN once idle at home; opt-in per
+	                      // axis since a gravity-loaded axis loses holding
+	                      // torque the instant it de-energises
 
 	float kp, ki, kd;   // PID gains, output in steps/s per unit of frame error
 	uint16_t max_sps;   // clamp on the PID output

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useHorus } from '@/hooks/useHorus'
 import { ControlPanel } from '@/components/ControlPanel'
+import { JogPad } from '@/components/JogPad'
 import { VideoPanel } from '@/components/VideoPanel'
 import { ClipsPanel } from '@/components/ClipsPanel'
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,6 @@ function App() {
   const [stopping, setStopping] = useState(false)
   const [stopError, setStopError] = useState<string | undefined>(undefined)
   const [view, setView] = useState<'controls' | 'clips'>('controls')
-  const [controlsCollapsed, setControlsCollapsed] = useState(false)
 
   const handleEstop = useCallback(() => {
     setStopping(true)
@@ -90,23 +89,23 @@ function App() {
             )}
 
             {descriptor && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="self-start"
-                onClick={() => setControlsCollapsed((c) => !c)}
-              >
-                {controlsCollapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
-                controls
-              </Button>
+              <JogPad
+                motion={descriptor.controls.find((c) => c.id === 'motion')}
+                motionValues={state.motion ?? {}}
+                axisX={descriptor.controls.find((c) => c.id === 'axis_x')}
+                axisXValues={state.axis_x ?? {}}
+                axisY={descriptor.controls.find((c) => c.id === 'axis_y')}
+                axisYValues={state.axis_y ?? {}}
+              />
             )}
 
-            {!controlsCollapsed && (
+            {descriptor && (
               // Single column on phones; two columns once there is room, since a
               // control panel's fields (sliders + numeric entry) want width more
-              // than a phone screen wants density.
+              // than a phone screen wants density. Each panel collapses on its
+              // own (ControlPanel), so this grid itself has nothing to toggle.
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {descriptor?.controls.map((control) => (
+                {descriptor.controls.map((control) => (
                   <ControlPanel key={control.id} control={control} values={state[control.id] ?? {}} />
                 ))}
               </div>

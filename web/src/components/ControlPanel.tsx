@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import type { Control, Field, Values } from '@/lib/proto'
 import { patchControl } from '@/lib/api'
+import { usePersistedCollapse } from '@/hooks/usePersistedCollapse'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -174,6 +176,7 @@ export function ControlPanel({ control, values }: ControlPanelProps) {
   const pendingRef = useRef<Values>({})
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [error, setError] = useState<string | undefined>(undefined)
+  const [collapsed, toggleCollapsed] = usePersistedCollapse(`panel:${control.id}`)
 
   useEffect(() => () => clearTimeout(timerRef.current), [])
 
@@ -200,15 +203,25 @@ export function ControlPanel({ control, values }: ControlPanelProps) {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader
+        className="flex-row items-center justify-between space-y-0 cursor-pointer select-none"
+        onClick={toggleCollapsed}
+      >
         <CardTitle>{control.label}</CardTitle>
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        <div className="flex items-center gap-2">
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button variant="ghost" size="icon-sm" aria-label={collapsed ? 'expand' : 'collapse'}>
+            {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {control.fields.map((field) => (
-          <FieldRow key={field.key} field={field} value={display[field.key]} onChange={onChange} />
-        ))}
-      </CardContent>
+      {!collapsed && (
+        <CardContent className="space-y-4">
+          {control.fields.map((field) => (
+            <FieldRow key={field.key} field={field} value={display[field.key]} onChange={onChange} />
+          ))}
+        </CardContent>
+      )}
     </Card>
   )
 }

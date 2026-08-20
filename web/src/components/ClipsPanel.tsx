@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 import type { Clip, ClippingStatus } from '@/lib/proto'
 import { deleteClip, listClips, setClippingEnabled } from '@/lib/api'
+import { usePersistedCollapse } from '@/hooks/usePersistedCollapse'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -145,6 +146,7 @@ export function ClipsPanel({ clipping }: ClipsPanelProps) {
   // clipStatusPollInterval (3s) behind — that lag was reading as "the toggle
   // is broken" since the switch would snap back to the old value.
   const [local, setLocal] = useState<ClippingStatus | undefined>(clipping)
+  const [collapsed, toggleCollapsed] = usePersistedCollapse('panel:clipping')
 
   useEffect(() => {
     setLocal(clipping)
@@ -194,33 +196,43 @@ export function ClipsPanel({ clipping }: ClipsPanelProps) {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader>
+        <CardHeader
+          className="flex-row items-center justify-between space-y-0 cursor-pointer select-none"
+          onClick={toggleCollapsed}
+        >
           <CardTitle>clipping</CardTitle>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center justify-between">
-            <Label>record clips when someone is in frame</Label>
-            <div className="flex items-center gap-2">
-              {local?.recording && (
-                <span className="text-xs font-medium text-destructive">recording…</span>
-              )}
-              <Button
-                type="button"
-                size="sm"
-                variant={local?.enabled ? 'default' : 'outline'}
-                disabled={toggling || local === undefined}
-                onClick={handleToggle}
-                className={local?.enabled ? 'bg-green-600 hover:bg-green-700' : ''}
-              >
-                {toggling ? 'saving…' : local?.enabled ? 'ON' : 'OFF'}
-              </Button>
-            </div>
+          <div className="flex items-center gap-2">
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <Button variant="ghost" size="icon-sm" aria-label={collapsed ? 'expand' : 'collapse'}>
+              {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
+            </Button>
           </div>
-          {local === undefined && (
-            <p className="text-xs text-muted-foreground">clip admin not available</p>
-          )}
-        </CardContent>
+        </CardHeader>
+        {!collapsed && (
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>record clips when someone is in frame</Label>
+              <div className="flex items-center gap-2">
+                {local?.recording && (
+                  <span className="text-xs font-medium text-destructive">recording…</span>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={local?.enabled ? 'default' : 'outline'}
+                  disabled={toggling || local === undefined}
+                  onClick={handleToggle}
+                  className={local?.enabled ? 'bg-green-600 hover:bg-green-700' : ''}
+                >
+                  {toggling ? 'saving…' : local?.enabled ? 'ON' : 'OFF'}
+                </Button>
+              </div>
+            </div>
+            {local === undefined && (
+              <p className="text-xs text-muted-foreground">clip admin not available</p>
+            )}
+          </CardContent>
+        )}
       </Card>
 
       {clips.length === 0 && (

@@ -239,6 +239,7 @@ private:
   void finish_clip() {
     if (active_ == nullptr) return;
     active_.reset();  // destructor writes the trailer and closes the file
+    runtime_->set_recording(false);
 
     std::error_code ec;
     std::filesystem::rename(temp_path_, current_path_, ec);
