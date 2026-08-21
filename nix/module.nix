@@ -215,7 +215,13 @@ in
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
-        ExecStart = "${capturePkg}/bin/capture-eye --config ${cfg.configFile}";
+        # --control-socket, not a configFile key: this is the same path the
+        # module hands horus-server as --socket, so the module owns both ends of
+        # it and no user config has to restate it correctly. Flags outrank the
+        # file (see capture-eye/docs/config.md), which is what makes this
+        # authoritative rather than another source of truth to keep in sync.
+        ExecStart = "${capturePkg}/bin/capture-eye --config ${cfg.configFile}"
+          + " --control-socket ${controlSocket}";
         Restart = "always";
         RestartSec = 2;
         # capture-eye currently exits outright when a frame sink fails at
