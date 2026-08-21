@@ -60,7 +60,7 @@ let
     webrtcLocalTCPAddress = ":8189";
     # Google's public STUN server for NAT traversal outside the LAN. It only
     # learns candidate addresses (for hole-punching), never the stream itself.
-    webrtcICEServers2 = [ "stun:stun.l.google.com:19302" ];
+    webrtcICEServers2 = [ { url = "stun:stun.l.google.com:19302"; } ];
 
     hls = false;
     rtmp = false;
@@ -250,6 +250,14 @@ in
         export HOME=${goCache}
         export GOCACHE=${goCache}/build
         export GOPATH=${goCache}/path
+        # No cgo: the only dependency is gorilla/websocket (pure Go), and cgo is
+        # pulled in solely by net/http -> net's default resolver. Without this,
+        # the build needs a C toolchain that this PATH deliberately doesn't have.
+        export CGO_ENABLED=0
+        # tmpfiles.rules below own these dirs' modes/ownership, but
+        # systemd-tmpfiles-resetup runs *after* activation scripts — on a first
+        # activation they don't exist yet, so create them here.
+        mkdir -p /var/lib/horus-server/bin ${goCache}
         cd ${repoDir}/server
         ${pkgs.go}/bin/go build -o ${serverBin}.new ./cmd/horus-server
         mv -f ${serverBin}.new ${serverBin}
@@ -301,6 +309,8 @@ in
       deps = [ "horusRepoSync" ];
       text = ''
         export PATH=${pkgs.nodejs_22}/bin:${pkgs.bash}/bin:$PATH
+        # Same first-activation ordering caveat as horusServerBuild above.
+        mkdir -p ${webDist}
         cd ${repoDir}/web
         ${pkgs.nodejs_22}/bin/npm ci
         ${pkgs.nodejs_22}/bin/npm run build
