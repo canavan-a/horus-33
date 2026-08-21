@@ -223,6 +223,13 @@ in
         # that self-heal rather than requiring manual intervention.
         DynamicUser = false; # needs stable access to /dev/video*, /dev/ttyACM0, /dev/dri
         SupplementaryGroups = [ "video" "dialout" "render" "horus-clips" ];
+        # capture-eye resolves its model cache from $XDG_CACHE_HOME, then $HOME
+        # (model_store.cpp's default_cache_root), and treats "neither is set" as
+        # invalid config — a systemd unit has neither, so without this it can
+        # never start. CacheDirectory also means the downloaded model survives
+        # reboots instead of being refetched into a tmpfs.
+        CacheDirectory = "horus-capture-eye";
+        Environment = [ "XDG_CACHE_HOME=/var/cache/horus-capture-eye" ];
         RuntimeDirectory = runtimeDir;
         RuntimeDirectoryMode = "0770";
         RuntimeDirectoryPreserve = true;
