@@ -230,6 +230,17 @@ in
         # reboots instead of being refetched into a tmpfs.
         CacheDirectory = "horus-capture-eye";
         Environment = [ "XDG_CACHE_HOME=/var/cache/horus-capture-eye" ];
+        # Both of these exist so horus-server (a different, non-root user) can
+        # actually open the relay and clip-admin sockets capture-eye creates:
+        #   Group  — RuntimeDirectory is owned User:Group, so without this
+        #            /run/horus is root:root 0770 and the "horus" supplementary
+        #            group on horus-server can't even traverse into it.
+        #   UMask  — capture-eye never chmods its sockets after bind(), so their
+        #            mode is purely umask-derived; systemd's default 0022 yields
+        #            srwxr-xr-x, and connect(2) needs *write*, so only root could.
+        #            0007 makes them srwxrwx--- — group horus, which is the point.
+        Group = "horus";
+        UMask = "0007";
         RuntimeDirectory = runtimeDir;
         RuntimeDirectoryMode = "0770";
         RuntimeDirectoryPreserve = true;
