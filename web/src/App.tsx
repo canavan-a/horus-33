@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { useHorus } from '@/hooks/useHorus'
 import { ControlPanel } from '@/components/ControlPanel'
 import { JogPad } from '@/components/JogPad'
@@ -6,8 +6,8 @@ import { VideoPanel } from '@/components/VideoPanel'
 import { ClipsPanel } from '@/components/ClipsPanel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { estop } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useSettingsVisible } from '@/hooks/useSettingsVisible'
 import type { LinkStatus } from '@/lib/proto'
 
 const STATUS_LABEL: Record<LinkStatus, string> = {
@@ -30,24 +30,14 @@ function LinkBadge({ status }: { status: LinkStatus }) {
 
 function App() {
   const { linkStatus, linkError, descriptor, state, clipping } = useHorus()
-  const [stopping, setStopping] = useState(false)
-  const [stopError, setStopError] = useState<string | undefined>(undefined)
   const [view, setView] = useState<'controls' | 'clips'>('controls')
-
-  const handleEstop = useCallback(() => {
-    setStopping(true)
-    estop()
-      .then(() => setStopError(undefined))
-      .catch((err) => setStopError(err.message))
-      .finally(() => setStopping(false))
-  }, [])
+  const [settingsVisible] = useSettingsVisible()
 
   return (
     <div className="min-h-dvh bg-background">
-      {/* Sticky header: e-stop must stay reachable with one thumb on a phone,
-          scrolled to any point in a long control list. */}
       <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/75">
         <div className="flex min-w-0 items-center gap-2">
+          <img src="/eye-of-horus.svg" alt="" className="size-6 shrink-0 rounded" />
           <h1 className="truncate text-base font-semibold sm:text-lg">horus-33</h1>
           <LinkBadge status={linkStatus} />
         </div>
@@ -62,19 +52,11 @@ function App() {
           <Button variant={view === 'clips' ? 'default' : 'outline'} size="sm" onClick={() => setView('clips')}>
             clips
           </Button>
-          <Button variant="destructive" size="sm" onClick={handleEstop} disabled={stopping}>
-            E-STOP
-          </Button>
         </div>
       </header>
 
       {linkError && (
         <div className="border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">{linkError}</div>
-      )}
-      {stopError && (
-        <div className="border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          e-stop failed: {stopError}
-        </div>
       )}
 
       <main className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
@@ -99,7 +81,7 @@ function App() {
               />
             )}
 
-            {descriptor && (
+            {descriptor && settingsVisible && (
               // Single column on phones; two columns once there is room, since a
               // control panel's fields (sliders + numeric entry) want width more
               // than a phone screen wants density. Each panel collapses on its

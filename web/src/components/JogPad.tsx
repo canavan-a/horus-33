@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Settings } from 'lucide-react'
 import type { Control, Values } from '@/lib/proto'
 import { patchControl } from '@/lib/api'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useSettingsVisible } from '@/hooks/useSettingsVisible'
 
 // A tap shorter than this is a burst (fixed-duration nudge); held longer, it
 // becomes continuous jogging that stops on release. The protocol has no
@@ -49,6 +50,7 @@ interface JogPadProps {
 export function JogPad({ motion, motionValues, axisX, axisXValues, axisY, axisYValues }: JogPadProps) {
   const activeRef = useRef<Partial<Record<Direction, ActiveMove>>>({})
   const [pressed, setPressed] = useState<Partial<Record<Direction, boolean>>>({})
+  const [settingsVisible, toggleSettingsVisible] = useSettingsVisible()
   const mode = typeof motionValues.mode === 'string' ? motionValues.mode : 'manual'
   const manual = mode === 'manual'
 
@@ -197,14 +199,13 @@ export function JogPad({ motion, motionValues, axisX, axisXValues, axisY, axisYV
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle>Manual control</CardTitle>
-        {motion && (
+      {motion && (
+        <CardHeader className="flex-row items-center space-y-0">
           <Button type="button" size="sm" variant={manual ? 'default' : 'outline'} onClick={toggleMode}>
             {mode}
           </Button>
-        )}
-      </CardHeader>
+        </CardHeader>
+      )}
       <CardContent>
         <div
           className="mx-auto grid w-fit gap-2"
@@ -228,12 +229,21 @@ export function JogPad({ motion, motionValues, axisX, axisXValues, axisY, axisYV
           </p>
         )}
         {motion && (
-          <div className="mt-3 flex flex-wrap justify-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
             <Button type="button" size="sm" variant="outline" onClick={setHome} disabled={!manual}>
               Set home
             </Button>
             <Button type="button" size="sm" variant="outline" onClick={goHome}>
               Home
+            </Button>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant={settingsVisible ? 'default' : 'outline'}
+              aria-label={settingsVisible ? 'hide settings' : 'show settings'}
+              onClick={toggleSettingsVisible}
+            >
+              <Settings className="size-4" />
             </Button>
           </div>
         )}

@@ -109,7 +109,12 @@ run horus-server nix develop "$ROOT" --command bash -c \
     --clips-dir '$ROOT/capture-eye/dev-clips' --clip-admin-socket /tmp/horus-clip-admin.sock"
 
 run web nix develop "$ROOT" --command bash -c \
-  "cd '$ROOT/web' && [ -d node_modules ] || npm install; npm run dev -- --port 5173"
+  "cd '$ROOT/web' && [ -d node_modules ] || npm install; npm run dev -- --host 0.0.0.0 --port 5173"
 
-echo "› all services starting — web UI at http://localhost:5173  (Ctrl-C to stop everything)"
+# --host 0.0.0.0 above puts the vite dev server on every interface, not just
+# loopback, so another device on the LAN can smoke-test against it — the
+# proxy targets in vite.config.ts stay 127.0.0.1 regardless, since those run
+# server-side against horus-server/MediaMTX on this same machine.
+lan_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+echo "› all services starting — web UI at http://localhost:5173${lan_ip:+ and http://$lan_ip:5173} (Ctrl-C to stop everything)"
 wait

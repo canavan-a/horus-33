@@ -23,6 +23,16 @@ webrtcAddress: :8889
 # learns candidate addresses (for hole-punching), never the stream itself.
 webrtcICEServers2:
   - url: stun:stun.l.google.com:19302
+# Without these, MediaMTX gathers ICE candidates on ephemeral, unpredictable
+# UDP/TCP ports -- fine for 127.0.0.1, but unfirewallable for any other
+# device: there's no fixed port to open, so every inbound connectivity-check
+# packet gets dropped by default-deny and the browser reports "ICE connection
+# lost" even though the WHEP HTTP exchange itself succeeded. Pinned to :8189
+# to match nix/module.nix's production config -- open TCP+UDP 8189 (and TCP
+# 8889 for the WHEP POST itself) in the firewall to reach this from another
+# device on the LAN.
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: :8189
 
 # Off by default. Both add latency, and neither is needed to watch the tracker;
 # enable hls if you want a browser tab that survives a reconnect.
