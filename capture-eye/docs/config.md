@@ -189,3 +189,34 @@ you want to know *why* without hunting through the journal every time.
 | 2 | invalid configuration (bad flag or config file) |
 | 10 | camera: not found, rejected format, or streaming failed |
 | 11 | serial: ESP32 not found or link failed to open |
+
+## Checking a config without starting
+
+```
+capture-eye --check-config --config /etc/horus/capture-eye.json
+```
+
+Loads the file, merges it under any flags given, validates the result, and
+exits — 0 if the config is usable, 2 with the offending key on stderr if it is
+not. It opens no camera, no serial port and no model, so it is safe to run as
+any user while the service is running.
+
+This is what `horusctl config` uses to check an edit before installing it: the
+candidate file is written next to the real one, checked with this command, and
+only then renamed into place. A rejected edit leaves the live config untouched.
+
+## Editing a deployed config
+
+On a host running the NixOS module, prefer `horusctl` over editing this file by
+hand — it validates before it writes and restarts the unit for you:
+
+```
+horusctl config show
+horusctl config set-video --device /dev/video2 --size 1280x720 --fourcc MJPG
+horusctl config set-serial --port /dev/serial/by-id/usb-Espressif_...-if00
+horusctl config devices          # what is actually attached right now
+horusctl service restart         # camera and serial are negotiated at startup
+```
+
+`horusctl config edit` opens the file in `$EDITOR` and validates on the way
+back out, for changes the typed flags above do not cover.

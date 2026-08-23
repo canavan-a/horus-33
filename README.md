@@ -37,7 +37,8 @@ serial control loop, with a web UI and a terminal UI for driving it directly.
   clip browsing.
 - **[`tui-controller/`](tui-controller)** — `horusctl`, a terminal UI for
   driving the device directly (real serial link or a fake one for local
-  development).
+  development), plus the `config` and `service` subcommands that manage a
+  deployed host (see [Operating a deployed host](#operating-a-deployed-host)).
 - **[`firmware/`](firmware)** — ESP32-S3 (Arduino framework, PlatformIO)
   firmware for the gimbal itself: motor/LED controls, the device side of the
   wire protocol.
@@ -62,6 +63,32 @@ than an explicit error).
 
 Web UI is then at `http://localhost:5173`. `./dev-stop.sh` cleans up any
 stragglers if a previous run didn't shut down cleanly.
+
+## Operating a deployed host
+
+On a host running the NixOS module, `horusctl` is on every user's PATH and
+edits the same config file the `horus-capture-eye` unit reads. Retuning the
+camera or moving the serial port is a one-liner — no Nix rebuild, no commit:
+
+```
+horusctl config devices                      # what is attached right now
+horusctl config set-video --device /dev/video2 --size 1280x720 --fourcc MJPG
+horusctl config set-serial --port /dev/serial/by-id/usb-Espressif_...-if00
+horusctl config show
+sudo horusctl service restart                # camera + serial bind at startup
+```
+
+Every write is checked with `capture-eye --check-config` before it replaces
+the file, so a bad edit is refused and the running config is left alone. Add
+`--restart` to a `config` command to write and restart in one step, and use
+`horusctl service status` / `logs -f` to see the result — `status` decodes
+capture-eye's exit codes (10 camera, 11 serial, 2 config) inline.
+
+For this to work, `services.horus.configFile` must be a mutable path (its
+default, `/etc/horus/capture-eye.json`) rather than a Nix store path; the
+module asserts as much. To ship an initial config from Nix, set
+`services.horus.seedConfigFile` — it is copied into place on first activation
+and never overwrites later edits.
 
 ## Building
 

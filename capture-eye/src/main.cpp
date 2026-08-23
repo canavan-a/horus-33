@@ -210,6 +210,18 @@ extern "C" void handle_interrupt(int) {
       std::fputs(usage().c_str(), stdout);
       return 0;
 
+    // Deliberately the whole of what this command does: resolve_config already
+    // loads the file, merges it under the flags, and validates the result — the
+    // same code path `run` itself takes. Anything more (opening the camera,
+    // fetching the model) would defeat the point, which is a check that stays
+    // safe to run as any user while the service is up. Silent on success, so
+    // `capture-eye --check-config --config tmp && mv tmp real` reads cleanly.
+    case Command::check_config: {
+      const auto config = resolve_config(inv);
+      if (!config) return std::unexpected(config.error());
+      return 0;
+    }
+
     case Command::list_formats: {
       const auto config = resolve_config(inv);
       if (!config) return std::unexpected(config.error());

@@ -63,6 +63,12 @@ struct Snapshot {
 	float min_conf;    // detections below this are ignored
 	float deadband;    // |error| under this counts as centred
 	uint16_t home_sps; // speed cap while returning home
+	// MANUAL-mode idle de-energize. Global rather than per-axis, and on a single
+	// shared timer: in manual the operator is driving the whole machine, so
+	// motion on either axis means the session is live and neither driver should
+	// be dropped. PID keeps its own per-axis auto_deenergize, untouched by this.
+	bool manual_deenergize;  // drop EN in MANUAL once idle for manual_idle_ms
+	uint16_t manual_idle_ms; // idle window; 0 = never de-energize
 	AxisState axis[AXIS_COUNT];
 };
 

@@ -1,6 +1,14 @@
-// Command horusctl is a terminal UI for the horus-33 device. It renders
-// whatever controls the device advertises, so new firmware controls appear here
-// without a host change.
+// Command horusctl drives a horus-33 host.
+//
+// With no subcommand it is a terminal UI for the device, rendering whatever
+// controls the firmware advertises, so new firmware controls appear here
+// without a host change. Two subcommands manage the host side instead:
+//
+//	horusctl config …   edit capture-eye's config file (camera, serial port)
+//	horusctl service …  start/stop/restart the capture-eye unit
+//
+// Together those make retuning video input a one-line change on the host,
+// rather than an edit to the machine's Nix config and a rebuild.
 package main
 
 import (
@@ -15,6 +23,25 @@ import (
 )
 
 func main() {
+	// Subcommands are dispatched before flag.Parse so the TUI keeps its exact
+	// existing invocation: a bare `horusctl`, or `horusctl --port ... --fake`,
+	// behaves as it always has. Only a first argument that names a subcommand
+	// takes the other path.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "config":
+			if err := runConfig(os.Args[2:]); err != nil {
+				fatal(err)
+			}
+			return
+		case "service":
+			if err := runService(os.Args[2:]); err != nil {
+				fatal(err)
+			}
+			return
+		}
+	}
+
 	var (
 		port    = flag.String("port", "", "serial port (default: auto-detect an Espressif device)")
 		baud    = flag.Int("baud", 115200, "baud rate (ignored by native USB CDC, but must be set)")
@@ -22,6 +49,7 @@ func main() {
 		latency = flag.Duration("fake-latency", 15*time.Millisecond, "simulated round-trip for --fake")
 		list    = flag.Bool("list", false, "list candidate serial ports and exit")
 	)
+	flag.Usage = usage
 	flag.Parse()
 
 	if *list {
@@ -68,4 +96,17 @@ func listPorts() error {
 func fatal(err error) {
 	fmt.Fprintln(os.Stderr, "horusctl:", err)
 	os.Exit(1)
+}
+
+func usage() {
+	fmt.Fprint(os.Stderr, `horusctl — horus-33 device and host control
+
+Usage:
+  horusctl [flags]        terminal UI for the device (flags below)
+  horusctl config ...     edit capture-eye's config: camera, serial port
+  horusctl service ...    start/stop/restart the capture-eye unit
+
+TUI flags:
+`)
+	flag.PrintDefaults()
 }

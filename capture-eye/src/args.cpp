@@ -128,6 +128,9 @@ Clipping:
                            stops (default 40)
 
 Modes:
+  --check-config       load and validate the config, then exit; opens no
+                        camera, serial port or model, so it is safe to run
+                        against a live host (exit 0 = valid, 2 = not)
   --list-formats       print what the camera supports, then exit
   --dump-model-io      print the model's tensor shapes, then exit
   --detect-image PATH  detect in one image file and print the boxes, then exit
@@ -157,6 +160,10 @@ Result<Invocation> parse_args(std::span<const std::string_view> args) {
     }
     if (arg == "--list-formats") {
       inv.command = Command::list_formats;
+      continue;
+    }
+    if (arg == "--check-config") {
+      inv.command = Command::check_config;
       continue;
     }
     if (arg == "--dump-model-io") {

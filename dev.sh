@@ -116,5 +116,8 @@ run web nix develop "$ROOT" --command bash -c \
 # proxy targets in vite.config.ts stay 127.0.0.1 regardless, since those run
 # server-side against horus-server/MediaMTX on this same machine.
 lan_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+# horusctl edits /etc/horus/capture-eye.json by default — the deployed path.
+# Pointing it at the dev config makes `horusctl config …` work here too.
+echo "› horusctl against this run: export HORUS_CONFIG=$CONFIG"
 echo "› all services starting — web UI at http://localhost:5173${lan_ip:+ and http://$lan_ip:5173} (Ctrl-C to stop everything)"
 wait

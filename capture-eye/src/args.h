@@ -15,6 +15,7 @@ enum class Command {
   list_formats,   // enumerate what the camera actually supports
   dump_model_io,  // print the model's real input/output tensor shapes
   detect_image,   // run the detector on one still image and print the boxes
+  check_config,   // load + validate the config, touch no hardware, then exit
   help,
 };
 

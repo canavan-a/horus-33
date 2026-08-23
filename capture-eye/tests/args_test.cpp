@@ -75,6 +75,14 @@ TEST_CASE("modes short-circuit to their command") {
   REQUIRE(dump.has_value());
   CHECK(dump->command == Command::dump_model_io);
 
+  // --check-config still records the flags around it: horusctl validates a
+  // candidate file with the same --control-socket the unit passes.
+  const auto check = parse({"--check-config", "--config", "/etc/horus/capture-eye.json"});
+  REQUIRE(check.has_value());
+  CHECK(check->command == Command::check_config);
+  REQUIRE(check->config_file.has_value());
+  CHECK(*check->config_file == "/etc/horus/capture-eye.json");
+
   // --help wins immediately, even with a broken flag after it.
   const auto help = parse({"--help", "--nonsense"});
   REQUIRE(help.has_value());

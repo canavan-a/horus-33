@@ -36,6 +36,9 @@ let
   cfg = config.services.horus;
   webDist = "/var/lib/horus-web/dist";
   serverBin = "/var/lib/horus-server/bin/horus-server";
+  # Same bin/ directory, same activation-script build, same "no vendorHash by
+  # design" tradeoff — horusctl is the other half of the same Go module tree.
+  horusctlBin = "/var/lib/horus-server/bin/horusctl";
   goCache = "/var/cache/horus-go";
   repoDir = "/opt/horus-33";
   runtimeDir = "horus";
@@ -81,6 +84,20 @@ in
         Passed straight through as --config; Nix never renders or validates
         this file's contents. Point it at a pkgs.writers.writeJSON-generated
         path instead if you want Nix to manage it after all.
+      '';
+    };
+
+    seedConfigFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = ''
+        Optional initial contents for configFile, copied into place on
+        activation *only if configFile does not already exist*. This is how you
+        ship a starting camera/serial config from Nix without making the live
+        file read-only: point it at a pkgs.writers.writeJSON derivation, and
+        after first boot the file belongs to the host, where `horusctl config
+        set` can edit it. Never overwrites — a rebuild will not clobber a
+        change made with horusctl.
       '';
     };
 
@@ -144,6 +161,27 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    # A store path here is read-only and regenerated on every rebuild, which
+    # defeats both horusctl config and the whole point of configFile being a
+    # path rather than something Nix renders (see this module's top comment).
+    # Caught at eval, with the fix named, rather than as an EROFS at runtime.
+    assertions = [
+      {
+        assertion = !lib.hasPrefix builtins.storeDir (toString cfg.configFile);
+        message = ''
+          services.horus.configFile is a Nix store path
+          (${toString cfg.configFile}), which is read-only and replaced on every
+          rebuild — `horusctl config set` cannot edit it and your changes would
+          not survive a nixos-rebuild.
+
+          Leave configFile at its default (/etc/horus/capture-eye.json) and, if
+          you want Nix to provide the initial contents, move what you have to
+          services.horus.seedConfigFile — it is copied there once, on first
+          activation, and never overwritten afterwards.
+        '';
+      }
+    ];
+
     # --- device access: video capture, the serial port, VAAPI ---
     users.groups.horus = { };
     # Narrowly scoped to just clip files, same one-group-per-boundary pattern
@@ -170,6 +208,33 @@ in
       # git clone creates ${repoDir} itself; only its parent needs to exist
       # first, and /opt isn't guaranteed to already be there on NixOS.
       "d /opt 0755 root root -"
+    ];
+
+    # Copies seedConfigFile into place exactly once — the [ -e ] guard is what
+    # makes a rebuild safe after horusctl has edited the file. Runs before the
+    # unit starts, so a first boot comes up on the seeded config rather than
+    # capture-eye's built-in defaults.
+    system.activationScripts.horusSeedConfig = lib.mkIf (cfg.seedConfigFile != null) {
+      deps = [ "specialfs" ];
+      text = ''
+        if [ ! -e ${cfg.configFile} ]; then
+          mkdir -p "$(dirname ${cfg.configFile})"
+          cp ${cfg.seedConfigFile} ${cfg.configFile}
+          chmod 0644 ${cfg.configFile}
+        fi
+      '';
+    };
+
+    # `horusctl` on every user's PATH, pointed at the same config file the unit
+    # reads so an overridden configFile needs no --config, and with capture-eye
+    # available for the validation step `horusctl config` runs before it
+    # installs anything.
+    environment.systemPackages = [
+      (pkgs.writeShellScriptBin "horusctl" ''
+        export HORUS_CONFIG="''${HORUS_CONFIG:-${cfg.configFile}}"
+        export PATH="${capturePkg}/bin:$PATH"
+        exec ${horusctlBin} "$@"
+      '')
     ];
 
     # Clones (first activation) or fast-forwards (every activation after)
@@ -285,6 +350,12 @@ in
         cd ${repoDir}/server
         ${pkgs.go}/bin/go build -o ${serverBin}.new ./cmd/horus-server
         mv -f ${serverBin}.new ${serverBin}
+        # horusctl lives in a separate Go module (tui-controller/), so it needs
+        # its own build here rather than a second target in the one above.
+        # environment.systemPackages wraps it onto every user's PATH below.
+        cd ${repoDir}/tui-controller
+        ${pkgs.go}/bin/go build -o ${horusctlBin}.new ./cmd/horusctl
+        mv -f ${horusctlBin}.new ${horusctlBin}
         ${pkgs.systemd}/bin/systemctl try-restart horus-server.service || true
       '';
     };

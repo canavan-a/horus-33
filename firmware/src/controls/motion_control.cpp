@@ -70,6 +70,8 @@ Snapshot state{MANUAL,
                0.30f, // min_conf
                0.02f, // deadband
                800,   // home_sps
+               false, // manual_deenergize
+               5000,  // manual_idle_ms
                {
                    // enable run dir invert speed  auto_deenergize  kp ki kd  max  offset home pos_set epoch
                    {false, false, FWD, false, 400, false, 1200.0f, 0.0f, 0.0f, 4000, 0.0f, 0, 0, 0},
@@ -192,6 +194,10 @@ void motionTask(void *) {
 	// A timestamp to hold cmd at zero until, set when an axis just came back
 	// out of parkedIdle -- see REENERGIZE_SETTLE_MS.
 	uint32_t settleUntilMs[AXIS_COUNT];
+	// Shared idle timer for the MANUAL-mode park. Any motion on any axis, and
+	// any jog request, pushes it forward; see the block below the target read.
+	uint32_t lastMoveMs = millis();
+	bool manualParked = false;
 
 	for (size_t i = 0; i < AXIS_COUNT; i++) {
 		const Pins &p = PINS[i];
@@ -249,6 +255,26 @@ void motionTask(void *) {
 		bool fresh = everSeen && target.valid &&
 		             (millis() - lastSeenMs) < (uint32_t)s.lost_ms;
 
+		// A jog *request* counts as motion, not just actual stepping: a parked
+		// axis is forced to zero rate below, so waiting for the pulses to start
+		// would leave the park unable to ever release itself.
+		for (size_t i = 0; i < AXIS_COUNT; i++) {
+			if (s.axis[i].run) lastMoveMs = millis();
+		}
+
+		bool wantManualPark = s.mode == MANUAL && s.manual_deenergize &&
+		                      s.manual_idle_ms != 0 &&
+		                      (millis() - lastMoveMs) >= (uint32_t)s.manual_idle_ms;
+		if (manualParked && !wantManualPark) {
+			// Coming out of the park -- whether because the timer was reset, the
+			// mode changed or the feature was switched off. Give both drivers the
+			// same current-establishment window a PID un-park gets.
+			for (size_t i = 0; i < AXIS_COUNT; i++) {
+				settleUntilMs[i] = millis() + REENERGIZE_SETTLE_MS;
+			}
+		}
+		manualParked = wantManualPark;
+
 		for (size_t i = 0; i < AXIS_COUNT; i++) {
 			const Pins &p = PINS[i];
 			const AxisState &a = s.axis[i];
@@ -301,6 +327,7 @@ void motionTask(void *) {
 				settleUntilMs[i] = millis() + REENERGIZE_SETTLE_MS;
 			}
 			if (parkedIdle[i]) enabled = false;
+			if (manualParked) enabled = false;
 			if (millis() < settleUntilMs[i]) cmd = 0.0f;
 
 			// Slew-limit the rate. A stepper asked to jump straight from one
@@ -356,6 +383,7 @@ void motionTask(void *) {
 			// travel. Direction here is the pre-polarity request: `pos` counts in
 			// command space, which is what `home` is expressed in.
 			if (cur.freq != 0) {
+				lastMoveMs = millis();
 				posAccum[i] += (wantRev ? -1.0f : 1.0f) * (float)cur.freq * dt;
 				float whole = truncf(posAccum[i]);
 				if (whole != 0.0f) {
@@ -439,6 +467,8 @@ constexpr double SPEED_MIN = 0, SPEED_MAX = 20000, SPEED_STEP = 50;
 constexpr double GAIN_MIN = 0, GAIN_MAX = 20000, GAIN_STEP = 25;
 constexpr double POS_MIN = -1000000, POS_MAX = 1000000, POS_STEP = 10;
 constexpr double LOST_MIN = 100, LOST_MAX = 60000, LOST_STEP = 100;
+// Unlike LOST_MIN this bottoms out at 0, which is the "never de-energize" case.
+constexpr double IDLE_MIN = 0, IDLE_MAX = 60000, IDLE_STEP = 100;
 constexpr double UNIT_MIN = 0, UNIT_MAX = 1, UNIT_STEP = 0.05;
 constexpr double BAND_MIN = 0, BAND_MAX = 0.5, BAND_STEP = 0.01;
 // Deliberately narrower than target.x/y's full [-1,1]: a setpoint near the
@@ -492,6 +522,9 @@ void MotionControl::describe(JsonObject out) const {
 	             0.02);
 	desc::number(fields, "home_sps", "Home speed", SPEED_MIN, SPEED_MAX,
 	             SPEED_STEP, "sps", 800);
+	desc::boolean(fields, "manual_deenergize", "De-energize on manual", false);
+	desc::number(fields, "manual_idle_ms", "Manual idle timeout", IDLE_MIN,
+	             IDLE_MAX, IDLE_STEP, "ms", 5000);
 }
 
 bool MotionControl::apply(JsonObjectConst v, char *err, size_t errLen) {
@@ -524,6 +557,13 @@ bool MotionControl::apply(JsonObjectConst v, char *err, size_t errLen) {
 			if (!numField(kv.value(), key, SPEED_MIN, SPEED_MAX, n, err, errLen))
 				return false;
 			next.home_sps = (uint16_t)n;
+		} else if (strcmp(key, "manual_deenergize") == 0) {
+			if (!boolField(kv.value(), key, next.manual_deenergize, err, errLen))
+				return false;
+		} else if (strcmp(key, "manual_idle_ms") == 0) {
+			if (!numField(kv.value(), key, IDLE_MIN, IDLE_MAX, n, err, errLen))
+				return false;
+			next.manual_idle_ms = (uint16_t)n;
 		} else {
 			snprintf(err, errLen, "unknown field %.32s", key);
 			return false;
@@ -543,6 +583,8 @@ void MotionControl::emitState(JsonObject out) const {
 	out["min_conf"] = s.min_conf;
 	out["deadband"] = s.deadband;
 	out["home_sps"] = s.home_sps;
+	out["manual_deenergize"] = s.manual_deenergize;
+	out["manual_idle_ms"] = s.manual_idle_ms;
 }
 
 void AxisControl::describe(JsonObject out) const {

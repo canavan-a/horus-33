@@ -75,6 +75,12 @@ largest, or a persistent track ID) is the host's job; the device takes one targe
 If no valid detection arrives for `lost_ms`, both axes drive back to their
 configured `home` position.
 
+In `manual` mode there is no such stream to time out on, so idling is measured
+directly: with `manual_deenergize` set, both axes drop `EN` once nothing has
+moved and no jog has been requested for `manual_idle_ms` (`0` disables it). The
+timer is shared — motion on either axis keeps both energised — and any jog,
+mode change or return of the target re-energises immediately.
+
 ## Device → host
 
 | Type | Shape | Meaning |
