@@ -393,6 +393,15 @@ in
         Restart = "always";
         RestartSec = 2;
         DynamicUser = true;
+        # TURN credentials live in a root-only file on the host, not in the
+        # nix store. Leading "-" makes it optional so a missing file won't
+        # fail the unit. Read by systemd itself (as root) before it drops
+        # privileges to the DynamicUser, so this works regardless of the
+        # DynamicUser's restrictive access to the file. mediamtx picks these
+        # up via its MTX_-prefixed env overrides (see internal/conf/env) --
+        # e.g. MTX_WEBRTCICESERVERS2_1_URL/_USERNAME/_PASSWORD appends a TURN
+        # entry after the STUN one already in mediamtxConfig.
+        EnvironmentFile = "-/var/lib/horus-mediamtx/.env";
       };
     };
 

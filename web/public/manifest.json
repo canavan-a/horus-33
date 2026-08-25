@@ -4,8 +4,8 @@
   "description": "Eye of Horus pan-tilt camera control",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1a0f2e",
-  "theme_color": "#1a0f2e",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "orientation": "any",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
