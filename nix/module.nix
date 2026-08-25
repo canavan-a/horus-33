@@ -48,7 +48,7 @@ let
   capturePkg = pkgs.callPackage ../nix/capture-eye.nix { };
 
   mediamtxConfig = pkgs.writers.writeYAML "mediamtx.yml" {
-    logLevel = "info";
+    logLevel = "debug";
 
     rtsp = true;
     rtspTransports = [ "tcp" ];
