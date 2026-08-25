@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <g fill="none" stroke="#000" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+  <g fill="none" stroke="#fff" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
     <!-- almond eye: upper and lower lids meeting at sharp corners -->
     <path d="M40 256 C 136 140, 376 140, 472 256 C 376 372, 136 372, 40 256 Z" />
     <!-- iris ring -->
     <circle cx="256" cy="256" r="78" />
   </g>
   <!-- pupil -->
-  <circle cx="256" cy="256" r="36" fill="#000"/>
+  <circle cx="256" cy="256" r="36" fill="#fff"/>
 </svg>
