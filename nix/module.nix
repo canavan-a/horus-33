@@ -61,9 +61,6 @@ let
     # forwards the other's traffic. See the plan's M10 "Note on UDP".
     webrtcLocalUDPAddress = ":8189";
     webrtcLocalTCPAddress = ":8189";
-    # Google's public STUN server for NAT traversal outside the LAN. It only
-    # learns candidate addresses (for hole-punching), never the stream itself.
-    webrtcICEServers2 = [ { url = "stun:stun.l.google.com:19302"; } ];
 
     hls = false;
     rtmp = false;
@@ -399,8 +396,10 @@ in
         # privileges to the DynamicUser, so this works regardless of the
         # DynamicUser's restrictive access to the file. mediamtx picks these
         # up via its MTX_-prefixed env overrides (see internal/conf/env) --
-        # e.g. MTX_WEBRTCICESERVERS2_1_URL/_USERNAME/_PASSWORD appends a TURN
-        # entry after the STUN one already in mediamtxConfig.
+        # e.g. MTX_WEBRTCICESERVERS2_0_URL/_USERNAME/_PASSWORD sets the sole
+        # TURN entry (mediamtxConfig no longer defines any ICE servers itself,
+        # since Google's public STUN server was found to stall MediaMTX's
+        # own ICE gathering before it can answer the WHEP POST).
         EnvironmentFile = "-/var/lib/horus-mediamtx/.env";
       };
     };

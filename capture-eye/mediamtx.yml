@@ -19,10 +19,6 @@ rtspAddress: :8554
 # Browser playback. WHEP is served at the same path as the viewer page.
 webrtc: yes
 webrtcAddress: :8889
-# Google's public STUN server for NAT traversal outside the LAN. It only
-# learns candidate addresses (for hole-punching), never the stream itself.
-webrtcICEServers2:
-  - url: stun:stun.l.google.com:19302
 # Without these, MediaMTX gathers ICE candidates on ephemeral, unpredictable
 # UDP/TCP ports -- fine for 127.0.0.1, but unfirewallable for any other
 # device: there's no fixed port to open, so every inbound connectivity-check
