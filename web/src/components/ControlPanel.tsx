@@ -217,9 +217,13 @@ export function ControlPanel({ control, values }: ControlPanelProps) {
       </CardHeader>
       {!collapsed && (
         <CardContent className="space-y-4">
-          {control.fields.map((field) => (
-            <FieldRow key={field.key} field={field} value={display[field.key]} onChange={onChange} />
-          ))}
+          {control.fields
+            // max_sps on axis_x/axis_y is set globally for both axes together
+            // via JogPad's PID speed presets, not per-axis here.
+            .filter((field) => !((control.id === 'axis_x' || control.id === 'axis_y') && field.key === 'max_sps'))
+            .map((field) => (
+              <FieldRow key={field.key} field={field} value={display[field.key]} onChange={onChange} />
+            ))}
         </CardContent>
       )}
     </Card>

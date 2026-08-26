@@ -17,6 +17,11 @@ const BURST_MS = 120
 
 type Direction = 'up' | 'down' | 'left' | 'right'
 
+// Presets for max_sps (PID max speed), applied to both axes at once -- the
+// per-axis sliders for this field are hidden in ControlPanel so this is the
+// only way to set it.
+const PID_SPEED_PRESETS = [50, 100, 200, 400, 800]
+
 interface AxisMove {
   controlId: string
   dir: 'fwd' | 'rev'
@@ -169,6 +174,13 @@ export function JogPad({ motion, motionValues, axisX, axisXValues, axisY, axisYV
   // operation needed -- redefining home to wherever you're physically
   // standing already re-syncs both. Both axes at once, since the common case
   // is framing a whole scene, not one axis independently.
+  const currentPidSpeed = axisXValues.max_sps
+
+  const setPidSpeed = (sps: number) => {
+    patchControl(axisX.id, { max_sps: sps }).catch(() => {})
+    patchControl(axisY.id, { max_sps: sps }).catch(() => {})
+  }
+
   const setHome = () => {
     const x = axisXValues.pos
     const y = axisYValues.pos
@@ -245,6 +257,22 @@ export function JogPad({ motion, motionValues, axisX, axisXValues, axisY, axisYV
             >
               <Settings className="size-4" />
             </Button>
+          </div>
+        )}
+        {motion && (
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+            <span className="text-xs text-muted-foreground">PID speed</span>
+            {PID_SPEED_PRESETS.map((sps) => (
+              <Button
+                key={sps}
+                type="button"
+                size="sm"
+                variant={currentPidSpeed === sps ? 'default' : 'outline'}
+                onClick={() => setPidSpeed(sps)}
+              >
+                {sps}
+              </Button>
+            ))}
           </div>
         )}
       </CardContent>
