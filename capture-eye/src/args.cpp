@@ -98,8 +98,8 @@ Model:
 
 Inference:
   --backend NAME       onnx|openvino (default onnx); openvino needs a build
-                        configured with -DCAPTURE_EYE_OPENVINO=ON and an
-                        explicit --model to an IR .xml
+                        configured with -DCAPTURE_EYE_OPENVINO=ON, and reads
+                        either the usual .onnx or an IR .xml via --model
   --conf F             host confidence threshold (default 0.35)
   --intra-threads N    ONNX Runtime intra-op threads (default 2)
   --fake-detector      synthetic detections; no model, for testing the pipeline

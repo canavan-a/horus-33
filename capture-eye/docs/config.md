@@ -81,9 +81,13 @@ only ever needs to be set once for a given physical mount.
 Both backends run the same preprocessing and postprocessing and sit behind the
 same detector seam, so `backend` is the only thing that changes between them.
 `openvino` needs a binary configured with `-DCAPTURE_EYE_OPENVINO=ON` (the
-`capture-eye-openvino` Nix package) and an explicit `model.path` pointing at an
-IR `.xml` — the model store only ever downloads `.onnx`. Asking for it anywhere
-else is a config error, never a silent fall back to ONNX.
+`capture-eye-openvino` Nix package); asking for it in one built without is a
+config error, never a silent fall back to ONNX.
+
+Either backend runs whatever `model` resolves to, so `model.variant` (including
+the quantized variants) works the same for both — the runtime and the model's
+precision are independent choices. OpenVINO also accepts an IR `.xml` via
+`model.path`, which skips re-importing the ONNX graph on every start.
 
 ### `serial`
 

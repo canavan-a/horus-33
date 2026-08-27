@@ -135,11 +135,6 @@ Result<void> validate(const AppConfig& config) {
                 "backend: openvino, but this capture-eye was built without it (configure with "
                 "-DCAPTURE_EYE_OPENVINO=ON)");
 #endif
-    // The model store only ever downloads .onnx; an IR .xml has to be pointed at.
-    if (config.model.path.empty()) {
-      return fail(ErrorCode::config_invalid,
-                  "backend: openvino needs an explicit model path to an IR .xml");
-    }
   }
   if (config.inference.conf_threshold < 0.0f || config.inference.conf_threshold > 1.0f) {
     return fail(ErrorCode::config_invalid,
