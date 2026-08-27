@@ -7,6 +7,7 @@
 #include <format>
 #include <memory>
 #include <span>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -16,13 +17,27 @@
 namespace capture_eye {
 namespace {
 
-[[nodiscard]] std::string shape_string(const ov::Shape& shape) {
-  std::string out = "[";
-  for (std::size_t i = 0; i < shape.size(); ++i) {
-    if (i > 0) out += ", ";
-    out += std::to_string(shape[i]);
+[[nodiscard]] std::string shape_string(const ov::PartialShape& shape) {
+  std::ostringstream out;
+  out << shape;
+  return out.str();
+}
+
+// A dimension matches if it is what we need or still dynamic — an ONNX export
+// with a dynamic batch (or an IR that kept one) is normal, and calling
+// get_shape() on any of it throws "to_shape was called on a dynamic shape".
+[[nodiscard]] bool dim_is(const ov::Dimension& dimension, std::int64_t expected) {
+  return dimension.is_dynamic() || dimension.get_length() == expected;
+}
+
+// A dimension we have to know the value of. Dynamic means we cannot size the
+// output buffers, which is a model we cannot drive rather than a model we can.
+[[nodiscard]] Result<std::size_t> static_dim(const ov::Dimension& dimension,
+                                             std::string_view what) {
+  if (dimension.is_dynamic()) {
+    return fail(ErrorCode::model_shape_unexpected, std::format("{} is dynamic", what));
   }
-  return out + "]";
+  return static_cast<std::size_t>(dimension.get_length());
 }
 
 struct Session {
@@ -52,50 +67,62 @@ Result<Detector> make_openvino_detector(const InferenceConfig& config,
   state->threshold = config.conf_threshold;
 
   try {
-    // Match the ONNX backend's thread budget rather than letting OpenVINO take
-    // every core: the capture thread has to keep up with the camera, and a
-    // benchmark between the two backends is only meaningful at equal budgets.
-    state->compiled = state->core.compile_model(
-        model.string(), "CPU",
-        ov::inference_num_threads(config.intra_op_threads),
-        ov::num_streams(config.inter_op_threads));
-    state->request = state->compiled.create_infer_request();
+    const std::shared_ptr<ov::Model> graph = state->core.read_model(model.string());
 
-    const auto inputs = state->compiled.inputs();
-    const auto outputs = state->compiled.outputs();
-    if (inputs.size() != 1) {
+    if (graph->inputs().size() != 1) {
       return fail(ErrorCode::model_shape_unexpected,
-                  std::format("expected 1 input, found {}", inputs.size()));
+                  std::format("expected 1 input, found {}", graph->inputs().size()));
     }
-    if (outputs.size() != 2) {
+    if (graph->outputs().size() != 2) {
       return fail(ErrorCode::model_shape_unexpected,
-                  std::format("expected 2 outputs (logits, boxes), found {}", outputs.size()));
+                  std::format("expected 2 outputs (logits, boxes), found {}",
+                              graph->outputs().size()));
     }
 
-    const ov::Shape input_shape = inputs[0].get_shape();
-    if (input_shape.size() != 4 || input_shape[1] != 3 ||
-        input_shape[2] != static_cast<std::size_t>(config.input_size) ||
-        input_shape[3] != static_cast<std::size_t>(config.input_size)) {
+    const ov::PartialShape input_shape = graph->input().get_partial_shape();
+    if (input_shape.rank() != 4 || !dim_is(input_shape[1], 3) ||
+        !dim_is(input_shape[2], config.input_size) || !dim_is(input_shape[3], config.input_size)) {
       return fail(ErrorCode::model_shape_unexpected,
                   std::format("input is {}, expected [batch, 3, {}, {}]",
                               shape_string(input_shape), config.input_size, config.input_size));
     }
 
+    // Pin the input to exactly one frame at our letterbox size before
+    // compiling. The export carries a dynamic batch, and a dynamic graph both
+    // leaves the output shapes unknowable here and costs OpenVINO the
+    // shape-specific kernel selection that is most of its advantage.
+    graph->reshape(ov::PartialShape{1, 3, config.input_size, config.input_size});
+
+    // Match the ONNX backend's thread budget rather than letting OpenVINO take
+    // every core: the capture thread has to keep up with the camera, and a
+    // benchmark between the two backends is only meaningful at equal budgets.
+    state->compiled = state->core.compile_model(
+        graph, "CPU",
+        ov::inference_num_threads(config.intra_op_threads),
+        ov::num_streams(config.inter_op_threads));
+    state->request = state->compiled.create_infer_request();
+
     // Resolve outputs by shape, not by position — same reasoning as the ONNX
     // backend: a re-export that reorders them must not silently swap meanings.
+    const auto outputs = state->compiled.outputs();
     for (std::size_t i = 0; i < 2; ++i) {
-      const ov::Shape shape = outputs[i].get_shape();
-      if (shape.size() != 3) {
+      const ov::PartialShape shape = outputs[i].get_partial_shape();
+      if (shape.rank() != 3) {
         return fail(ErrorCode::model_shape_unexpected,
                     std::format("output {} is {}, expected 3 dimensions", i, shape_string(shape)));
       }
-      if (shape[2] == 4) {
+      const auto last = static_dim(shape[2], std::format("output {} last dimension", i));
+      if (!last) return std::unexpected(last.error());
+      const auto queries = static_dim(shape[1], std::format("output {} query count", i));
+      if (!queries) return std::unexpected(queries.error());
+
+      if (*last == 4) {
         state->boxes_index = i;
       } else {
         state->logits_index = i;
-        state->classes = shape[2];
+        state->classes = *last;
       }
-      state->queries = shape[1];
+      state->queries = *queries;
     }
 
     if (state->boxes_index == state->logits_index) {
