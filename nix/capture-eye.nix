@@ -68,10 +68,23 @@ stdenv.mkDerivation {
   # Probing at build time keeps that honest — no import-from-derivation, and a
   # third layout would announce itself as a clear configure error rather than a
   # wrong path silently pointing nowhere.
+  #
+  # The same split decides where libopenvino.so itself lands, and CMake links
+  # it by absolute path — which records a DT_NEEDED soname but no RPATH entry,
+  # so the binary configures and links fine and then dies at exec time with
+  # "libopenvino.so.NNNN: cannot open shared object file". USE_LINK_PATH puts
+  # the linked libraries' directories back into the install RPATH.
   preConfigure = lib.optionalString withOpenVINO ''
     for dir in "${lib.getDev openvino}/lib/cmake/openvino" "${openvino}/runtime/cmake"; do
       if [ -f "$dir/OpenVINOConfig.cmake" ]; then
         cmakeFlagsArray+=("-DOpenVINO_DIR=$dir")
+        break
+      fi
+    done
+    cmakeFlagsArray+=("-DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON")
+    for dir in "${lib.getLib openvino}/lib" "${openvino}/runtime/lib/intel64" "${openvino}/lib"; do
+      if [ -e "$dir" ]; then
+        cmakeFlagsArray+=("-DCMAKE_INSTALL_RPATH=$dir")
         break
       fi
     done
