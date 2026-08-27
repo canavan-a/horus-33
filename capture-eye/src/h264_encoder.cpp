@@ -88,7 +88,17 @@ Result<void> Encoder::encode(const AnnotatedFrame& annotated) {
   // cadence jitters, and a counter would slowly drift against wall clock.
   const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
       annotated.captured_at - first_frame);
-  const std::int64_t pts = elapsed.count();
+  std::int64_t pts = elapsed.count();
+
+  // Millisecond resolution is coarser than the gap between two frames can be,
+  // and a clip's pre-roll replays a frame the live path then encodes again —
+  // so equal timestamps happen. The muxer rejects any packet whose dts does
+  // not advance ("non monotonically increasing dts"), which loses the frame
+  // and leaves players stalling at that point in the clip, so nudge a
+  // colliding frame one tick forward instead of handing it over unchanged.
+  if (started_pts && pts <= last_pts) pts = last_pts + 1;
+  last_pts = pts;
+  started_pts = true;
 
   AVFrame* to_encode = software_frame.get();
   if (hardware) {

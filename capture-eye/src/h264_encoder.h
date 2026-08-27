@@ -66,6 +66,11 @@ struct Encoder {
   std::chrono::steady_clock::time_point first_frame{};
   bool started = false;
 
+  // Last pts actually handed to the encoder, so a repeated or same-millisecond
+  // frame can be nudged past it rather than rejected by the muxer.
+  std::int64_t last_pts = 0;
+  bool started_pts = false;
+
   ~Encoder();
 
   [[nodiscard]] Result<void> encode(const AnnotatedFrame& annotated);
