@@ -59,6 +59,24 @@ stdenv.mkDerivation {
     ("-DCAPTURE_EYE_OPENVINO=" + (if withOpenVINO then "ON" else "OFF"))
   ];
 
+  # Where OpenVINOConfig.cmake lives depends on the nixpkgs vintage: newer
+  # openvino splits a "dev" output with the file under the standard
+  # lib/cmake/openvino, older ones ship a single output with it under
+  # runtime/cmake, which CMake's config-mode search does not look in. The
+  # module builds this package with the *host's* pkgs, so it has to cope with
+  # both rather than with whichever one this repo's flake happens to pin.
+  # Probing at build time keeps that honest — no import-from-derivation, and a
+  # third layout would announce itself as a clear configure error rather than a
+  # wrong path silently pointing nowhere.
+  preConfigure = lib.optionalString withOpenVINO ''
+    for dir in "${lib.getDev openvino}/lib/cmake/openvino" "${openvino}/runtime/cmake"; do
+      if [ -f "$dir/OpenVINOConfig.cmake" ]; then
+        cmakeFlagsArray+=("-DOpenVINO_DIR=$dir")
+        break
+      fi
+    done
+  '';
+
   doCheck = true;
   checkTarget = "test";
 
