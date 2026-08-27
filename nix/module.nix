@@ -45,7 +45,7 @@ let
   controlSocket = "/run/${runtimeDir}/control.sock";
   clipAdminSocket = "/run/${runtimeDir}/clip-admin.sock";
 
-  capturePkg = pkgs.callPackage ../nix/capture-eye.nix { };
+  capturePkg = pkgs.callPackage ../nix/capture-eye.nix { withOpenVINO = cfg.openvino; };
 
   mediamtxConfig = pkgs.writers.writeYAML "mediamtx.yml" {
     logLevel = "debug";
@@ -72,6 +72,20 @@ in
 {
   options.services.horus = {
     enable = lib.mkEnableOption "the horus-33 host stack (capture-eye, horus-server, MediaMTX, horus-web)";
+
+    openvino = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Deploy the capture-eye build with the OpenVINO inference backend
+        compiled in, so the config file can select
+        `inference.backend = "openvino"`. Off by default: OpenVINO is a large
+        dependency, and a binary without it rejects that setting outright
+        rather than silently running ONNX. Selecting the backend itself stays a
+        config-file decision (see capture-eye/docs/config.md) — this option only
+        decides which backends the deployed binary is capable of.
+      '';
+    };
 
     configFile = lib.mkOption {
       type = lib.types.path;
@@ -201,7 +215,7 @@ in
       # inherits group horus-clips regardless of capture-eye's own primary
       # group, so horus-server's read access doesn't depend on capture-eye
       # remembering to chgrp anything itself.
-      "d ${cfg.clipsDir} 2750 root horus-clips -"
+      "d ${cfg.clipsDir} 2770 root horus-clips -"
       # git clone creates ${repoDir} itself; only its parent needs to exist
       # first, and /opt isn't guaranteed to already be there on NixOS.
       "d /opt 0755 root root -"

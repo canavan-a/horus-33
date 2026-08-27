@@ -71,11 +71,19 @@ only ever needs to be set once for a given physical mount.
 
 | key | type | flag |
 |---|---|---|
+| `backend` | string: `onnx`\|`openvino` | `--backend` |
 | `input_size` | integer | — |
 | `conf_threshold` | number, [0,1] | `--conf` |
 | `intra_op_threads` | integer, ≥1 | `--intra-threads` |
 | `inter_op_threads` | integer, ≥1 | — |
 | `fake` | bool | `--fake-detector` |
+
+Both backends run the same preprocessing and postprocessing and sit behind the
+same detector seam, so `backend` is the only thing that changes between them.
+`openvino` needs a binary configured with `-DCAPTURE_EYE_OPENVINO=ON` (the
+`capture-eye-openvino` Nix package) and an explicit `model.path` pointing at an
+IR `.xml` — the model store only ever downloads `.onnx`. Asking for it anywhere
+else is a config error, never a silent fall back to ONNX.
 
 ### `serial`
 
@@ -105,8 +113,12 @@ only ever needs to be set once for a given physical mount.
 | `snapshot_every` | integer | — |
 | `rtsp_url` | string | `--rtsp` |
 | `bitrate_kbps` | integer, >0 | `--bitrate` |
-| `hardware_encode` | bool | `--no-hw-encode` (sets `false`) |
+| `hardware_encode` | bool | `--hw-encode` / `--no-hw-encode` |
 | `vaapi_device` | string | `--vaapi-device` |
+
+Hardware (VAAPI) encode is opt-in: `hardware_encode` defaults to `false`, since
+not every machine has a usable render node. When it is turned on and the device
+or driver is unavailable, capture-eye logs the reason and falls back to libx264.
 
 ### `ingress`
 

@@ -1,24 +1,18 @@
 #include "onnx_detector.h"
 
 #include <onnxruntime_cxx_api.h>
-#include <opencv2/imgproc.hpp>
 
 #include <algorithm>
 #include <array>
 #include <format>
 #include <memory>
-#include <thread>
 #include <vector>
 
-#include "frame_mat.h"
-#include "letterbox.h"
+#include "yolo_input.h"
 #include "yolo_output.h"
 
 namespace capture_eye {
 namespace {
-
-// Ultralytics pads with this grey; a different value measurably shifts results.
-constexpr double kPadValue = 114.0;
 
 [[nodiscard]] std::string shape_string(const std::vector<std::int64_t>& shape) {
   std::string out = "[";
@@ -35,6 +29,8 @@ constexpr double kPadValue = 114.0;
 }
 
 struct Session {
+  explicit Session(int input_size_) : input{input_size_}, input_size{input_size_} {}
+
   // Declaration order is lifetime order: the environment must outlive the
   // session that borrows it.
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "capture-eye"};
@@ -46,53 +42,12 @@ struct Session {
   std::size_t logits_index = 0;  // which output is which, resolved by shape
   std::size_t boxes_index = 1;
 
+  YoloInput input;  // letterbox + CHW float conversion, shared with the other backends
   int input_size = 640;
   std::size_t queries = 0;
   std::size_t classes = 0;
   float threshold = 0.35f;
-
-  // Reused across frames; nothing here is allocated in steady state.
-  std::vector<float> input_tensor;
-  cv::Mat canvas;    // padded 8UC3 BGR
-  cv::Mat rgb;       // 8UC3 RGB
-  cv::Mat floats;    // 32FC3 scaled
-  std::array<cv::Mat, 3> planes;  // views onto input_tensor
-  LetterboxTransform transform;
-  int prepared_width = 0;
-  int prepared_height = 0;
-
-  void prepare_for(int width, int height);
-  void fill_input(const Frame& frame);
 };
-
-void Session::prepare_for(int width, int height) {
-  if (width == prepared_width && height == prepared_height) return;
-
-  transform = letterbox_transform(width, height, input_size);
-  canvas.create(input_size, input_size, CV_8UC3);
-  canvas.setTo(cv::Scalar::all(kPadValue));
-  prepared_width = width;
-  prepared_height = height;
-}
-
-void Session::fill_input(const Frame& frame) {
-  prepare_for(frame.width, frame.height);
-
-  // Resize straight into the padded canvas's centre region, so the pad and the
-  // resize are one pass rather than a resize followed by copyMakeBorder.
-  const cv::Rect roi{transform.pad_x, transform.pad_y, transform.scaled_width,
-                     transform.scaled_height};
-  cv::Mat destination = canvas(roi);
-  cv::resize(mat_for(frame), destination, destination.size(), 0, 0, cv::INTER_LINEAR);
-
-  // Frames are BGR; the model was exported expecting RGB.
-  cv::cvtColor(canvas, rgb, cv::COLOR_BGR2RGB);
-  rgb.convertTo(floats, CV_32FC3, 1.0 / 255.0);
-
-  // Split writes the three channel planes directly into the tensor buffer, so
-  // the HWC-to-CHW transpose costs no extra copy.
-  cv::split(floats, planes.data());
-}
 
 } // namespace
 
@@ -122,8 +77,7 @@ Result<std::string> describe_model_io(const std::filesystem::path& model) {
 
 Result<Detector> make_onnx_detector(const InferenceConfig& config,
                                     const std::filesystem::path& model) {
-  auto state = std::make_shared<Session>();
-  state->input_size = config.input_size;
+  auto state = std::make_shared<Session>(config.input_size);
   state->threshold = config.conf_threshold;
 
   try {
@@ -189,16 +143,6 @@ Result<Detector> make_onnx_detector(const InferenceConfig& config,
                   std::format("model scores {} classes, which does not include class {}",
                               state->classes, kPersonClass));
     }
-
-    const std::size_t elements = static_cast<std::size_t>(config.input_size) *
-                                 static_cast<std::size_t>(config.input_size) * 3;
-    state->input_tensor.resize(elements);
-    const std::size_t plane = static_cast<std::size_t>(config.input_size) *
-                              static_cast<std::size_t>(config.input_size);
-    for (std::size_t c = 0; c < 3; ++c) {
-      state->planes[c] = cv::Mat{config.input_size, config.input_size, CV_32FC1,
-                                 state->input_tensor.data() + c * plane};
-    }
   } catch (const Ort::Exception& error) {
     return fail(ErrorCode::model_load_failed, error.what());
   }
@@ -207,13 +151,13 @@ Result<Detector> make_onnx_detector(const InferenceConfig& config,
   detector.name = "onnx";
   detector.detect = [state](const Frame& frame) -> Result<std::vector<Detection>> {
     try {
-      state->fill_input(frame);
+      state->input.fill(frame);
 
       const auto memory =
           Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
       const std::array<std::int64_t, 4> shape{1, 3, state->input_size, state->input_size};
-      auto input = Ort::Value::CreateTensor<float>(memory, state->input_tensor.data(),
-                                                   state->input_tensor.size(), shape.data(),
+      auto input = Ort::Value::CreateTensor<float>(memory, state->input.tensor().data(),
+                                                   state->input.tensor().size(), shape.data(),
                                                    shape.size());
 
       const std::array<const char*, 1> input_names{state->input_name.c_str()};
@@ -226,10 +170,10 @@ Result<Detector> make_onnx_detector(const InferenceConfig& config,
       const float* logits = outputs[state->logits_index].GetTensorData<float>();
       const float* boxes = outputs[state->boxes_index].GetTensorData<float>();
 
-      return parse_yolo_output(
-          std::span{logits, state->queries * state->classes},
-          std::span{boxes, state->queries * 4}, state->queries, state->classes, state->transform,
-          state->threshold, kPersonClass);
+      return parse_yolo_output(std::span{logits, state->queries * state->classes},
+                               std::span{boxes, state->queries * 4}, state->queries,
+                               state->classes, state->input.transform(), state->threshold,
+                               kPersonClass);
     } catch (const Ort::Exception& error) {
       // ORT is the one dependency that throws; the exception stops here and
       // becomes a Result like everything else in the pipeline.

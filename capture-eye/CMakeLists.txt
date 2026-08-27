@@ -74,6 +74,7 @@ add_library(capture_eye_io STATIC
   src/clip_sink.cpp
   src/clip_admin.cpp
   src/pipeline.cpp
+  src/yolo_input.cpp
   src/onnx_detector.cpp
   src/serial_port.cpp
   src/stdout_device_link.cpp
@@ -86,15 +87,22 @@ target_link_libraries(capture_eye_io
           ${ONNXRUNTIME_LIB} nlohmann_json::nlohmann_json
 )
 
+# The second inference backend is opt-in at configure time: OpenVINO is a heavy
+# dependency and most deployments only ever run the ONNX one. main.cpp keys off
+# the same define, so a binary built without it rejects `backend: openvino`
+# rather than quietly running ONNX instead.
+if(CAPTURE_EYE_OPENVINO)
+  find_package(OpenVINO REQUIRED)
+  target_sources(capture_eye_io PRIVATE src/openvino_detector.cpp)
+  target_link_libraries(capture_eye_io PRIVATE openvino::runtime)
+  # On core, not io: validate() lives there and has to reject `backend:
+  # openvino` in a build that has no such backend.
+  target_compile_definitions(capture_eye_core PUBLIC CAPTURE_EYE_OPENVINO=1)
+endif()
+
 # ---- executable ----
 add_executable(capture-eye src/main.cpp)
 target_link_libraries(capture-eye PRIVATE capture_eye_core capture_eye_io)
-
-if(CAPTURE_EYE_OPENVINO)
-  find_package(OpenVINO REQUIRED)
-  target_link_libraries(capture-eye PRIVATE openvino::runtime)
-  target_compile_definitions(capture-eye PRIVATE CAPTURE_EYE_OPENVINO=1)
-endif()
 
 install(TARGETS capture-eye RUNTIME DESTINATION bin)
 

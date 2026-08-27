@@ -55,6 +55,15 @@ template <typename T>
               std::format("{}: expected sticky|largest|confident|closest, got '{}'", where, *text));
 }
 
+[[nodiscard]] Result<InferenceBackend> parse_backend(const Json& value, std::string_view where) {
+  const auto text = as<std::string>(value, where);
+  if (!text) return std::unexpected(text.error());
+  if (*text == "onnx") return InferenceBackend::onnx;
+  if (*text == "openvino") return InferenceBackend::openvino;
+  return fail(ErrorCode::config_invalid,
+              std::format("{}: expected onnx|openvino, got '{}'", where, *text));
+}
+
 [[nodiscard]] Result<std::uint32_t> parse_fourcc(const Json& value, std::string_view where) {
   const auto text = as<std::string>(value, where);
   if (!text) return std::unexpected(text.error());
@@ -114,10 +123,12 @@ template <typename T>
 }
 
 [[nodiscard]] Result<void> parse_inference(const Json& obj, InferenceConfigOverlay& c) {
-  static constexpr std::array<std::string_view, 5> kKnown{
-      "input_size", "conf_threshold", "intra_op_threads", "inter_op_threads", "fake"};
+  static constexpr std::array<std::string_view, 6> kKnown{
+      "backend", "input_size", "conf_threshold", "intra_op_threads", "inter_op_threads", "fake"};
   if (const auto ok = reject_unknown_keys(obj, "inference", kKnown); !ok) return ok;
 
+  if (obj.contains("backend"))
+    TRY_ASSIGN(c.backend, parse_backend(obj["backend"], "inference.backend"));
   if (obj.contains("input_size"))
     TRY_ASSIGN(c.input_size, as<int>(obj["input_size"], "inference.input_size"));
   if (obj.contains("conf_threshold"))

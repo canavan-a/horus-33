@@ -17,6 +17,9 @@
       # The devShell below already carries a Go toolchain for `go run`/`go build`.
       packages = forAllSystems (pkgs: {
         capture-eye = pkgs.callPackage ./nix/capture-eye.nix { };
+        # Same sources with the OpenVINO inference backend compiled in, for
+        # hosts benchmarking or running `inference.backend = "openvino"`.
+        capture-eye-openvino = pkgs.callPackage ./nix/capture-eye.nix { withOpenVINO = true; };
         default = self.packages.${pkgs.stdenv.hostPlatform.system}.capture-eye;
       });
 

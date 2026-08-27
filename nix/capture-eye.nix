@@ -17,10 +17,15 @@
 , catch2_3
 , ffmpeg_8
 , libva
+, openvino
+# Second inference backend, off by default: OpenVINO is a large dependency and
+# most deployments only ever run the ONNX one. A host that wants to benchmark or
+# run it deploys packages.capture-eye-openvino instead.
+, withOpenVINO ? false
 }:
 
 stdenv.mkDerivation {
-  pname = "capture-eye";
+  pname = "capture-eye" + lib.optionalString withOpenVINO "-openvino";
   version = "0.7.0"; # M7: config file + control relay
 
   # Git-tracked files only — a plain `../capture-eye` path copies whatever is
@@ -47,10 +52,11 @@ stdenv.mkDerivation {
     # libavcodec.so.62-vs-.so.63 mismatch this pin was found fixing.
     ffmpeg_8
     libva
-  ];
+  ] ++ lib.optional withOpenVINO openvino;
 
   cmakeFlags = [
     "-DCMAKE_BUILD_TYPE=Release"
+    ("-DCAPTURE_EYE_OPENVINO=" + (if withOpenVINO then "ON" else "OFF"))
   ];
 
   doCheck = true;

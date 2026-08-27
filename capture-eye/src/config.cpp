@@ -35,6 +35,7 @@ ModelConfig merge_model(ModelConfig c, const ModelConfigOverlay& o) {
 }
 
 InferenceConfig merge_inference(InferenceConfig c, const InferenceConfigOverlay& o) {
+  layer(c.backend, o.backend);
   layer(c.input_size, o.input_size);
   layer(c.conf_threshold, o.conf_threshold);
   layer(c.intra_op_threads, o.intra_op_threads);
@@ -127,6 +128,18 @@ Result<void> validate(const AppConfig& config) {
       config.capture.decode_scale != 4) {
     return fail(ErrorCode::config_invalid, std::format("decode_scale: expected 1, 2 or 4, got {}",
                                                         config.capture.decode_scale));
+  }
+  if (config.inference.backend == InferenceBackend::openvino && !config.inference.fake) {
+#ifndef CAPTURE_EYE_OPENVINO
+    return fail(ErrorCode::config_invalid,
+                "backend: openvino, but this capture-eye was built without it (configure with "
+                "-DCAPTURE_EYE_OPENVINO=ON)");
+#endif
+    // The model store only ever downloads .onnx; an IR .xml has to be pointed at.
+    if (config.model.path.empty()) {
+      return fail(ErrorCode::config_invalid,
+                  "backend: openvino needs an explicit model path to an IR .xml");
+    }
   }
   if (config.inference.conf_threshold < 0.0f || config.inference.conf_threshold > 1.0f) {
     return fail(ErrorCode::config_invalid,

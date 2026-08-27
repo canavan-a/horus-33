@@ -52,7 +52,15 @@ struct ModelConfig {
   bool allow_unpinned = false;
 };
 
+// Which runtime turns pixels into boxes. Both sit behind the same Detector
+// seam, so this is the only thing that has to change to swap one for the other.
+// openvino is only present in a binary built with -DCAPTURE_EYE_OPENVINO=ON;
+// asking for it anywhere else is a startup error rather than a silent
+// downgrade, because the whole point of choosing it is to get its performance.
+enum class InferenceBackend { onnx, openvino };
+
 struct InferenceConfig {
+  InferenceBackend backend = InferenceBackend::onnx;
   int input_size = 640;
   float conf_threshold = 0.35f;
   // NOT 0 (= every core). ORT's intra-op pool spin-waits, and starving the
@@ -90,9 +98,11 @@ struct SinkConfig {
 
   std::string rtsp_url;  // empty = no video egress
   int bitrate_kbps = 4000;
-  // VAAPI keeps the encode off the CPU cores that inference wants. Falls back
-  // to libx264 when the device or driver is unavailable.
-  bool hardware_encode = true;
+  // Opt-in: VAAPI keeps the encode off the CPU cores that inference wants, but
+  // plenty of machines have no usable render node, so software encode is what
+  // every deployment is guaranteed to start on. When hardware is asked for and
+  // the device or driver turns out to be unavailable, falls back to libx264.
+  bool hardware_encode = false;
   std::filesystem::path vaapi_device = "/dev/dri/renderD128";
 };
 
@@ -118,7 +128,7 @@ struct ClippingConfig {
   // run at different, drifting rates (see ClipPolicy).
   int stop_after_ticks = 40;
   int bitrate_kbps = 4000;
-  bool hardware_encode = true;
+  bool hardware_encode = false;  // opt-in, for the reasons SinkConfig gives
   std::filesystem::path vaapi_device = "/dev/dri/renderD128";
 };
 
@@ -162,6 +172,7 @@ struct ModelConfigOverlay {
 };
 
 struct InferenceConfigOverlay {
+  std::optional<InferenceBackend> backend;
   std::optional<int> input_size;
   std::optional<float> conf_threshold;
   std::optional<int> intra_op_threads;

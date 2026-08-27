@@ -45,6 +45,13 @@ namespace {
               std::format("--policy: expected sticky|largest|confident|closest, got '{}'", text));
 }
 
+[[nodiscard]] Result<InferenceBackend> parse_backend(std::string_view text) {
+  if (text == "onnx") return InferenceBackend::onnx;
+  if (text == "openvino") return InferenceBackend::openvino;
+  return fail(ErrorCode::config_invalid,
+              std::format("--backend: expected onnx|openvino, got '{}'", text));
+}
+
 } // namespace
 
 Result<std::pair<int, int>> parse_size(std::string_view text) {
@@ -90,6 +97,9 @@ Model:
   --offline            never use the network; require a warm cache
 
 Inference:
+  --backend NAME       onnx|openvino (default onnx); openvino needs a build
+                        configured with -DCAPTURE_EYE_OPENVINO=ON and an
+                        explicit --model to an IR .xml
   --conf F             host confidence threshold (default 0.35)
   --intra-threads N    ONNX Runtime intra-op threads (default 2)
   --fake-detector      synthetic detections; no model, for testing the pipeline
@@ -114,7 +124,8 @@ Output:
   --snapshot PATH      periodically write the annotated frame to a JPEG
   --rtsp URL           publish H.264 to an RTSP server
   --bitrate KBPS       encoder bitrate (default 4000)
-  --no-hw-encode       use libx264 instead of VAAPI
+  --hw-encode          encode with VAAPI instead of libx264 (off by default)
+  --no-hw-encode       force software encode (libx264)
   --vaapi-device PATH  render node for hardware encode (default /dev/dri/renderD128)
 
 Clipping:
@@ -243,6 +254,12 @@ Result<Invocation> parse_args(std::span<const std::string_view> args) {
     } else if (arg == "--offline") {
       o.model.offline = true;
 
+    } else if (arg == "--backend") {
+      const auto v = value_for(arg);
+      if (!v) return std::unexpected(v.error());
+      const auto backend = parse_backend(*v);
+      if (!backend) return std::unexpected(backend.error());
+      o.inference.backend = *backend;
     } else if (arg == "--conf") {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
@@ -301,6 +318,8 @@ Result<Invocation> parse_args(std::span<const std::string_view> args) {
       const auto kbps = parse_int(arg, *v);
       if (!kbps) return std::unexpected(kbps.error());
       o.sink.bitrate_kbps = *kbps;
+    } else if (arg == "--hw-encode") {
+      o.sink.hardware_encode = true;
     } else if (arg == "--no-hw-encode") {
       o.sink.hardware_encode = false;
     } else if (arg == "--vaapi-device") {

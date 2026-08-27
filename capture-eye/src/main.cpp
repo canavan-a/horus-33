@@ -21,6 +21,9 @@
 #include "h264_sink.h"
 #include "model_store.h"
 #include "onnx_detector.h"
+#ifdef CAPTURE_EYE_OPENVINO
+#include "openvino_detector.h"
+#endif
 #include "pipeline.h"
 #include "serial_port.h"
 #include "track_message.h"
@@ -61,6 +64,27 @@ extern "C" void handle_interrupt(int) {
   return 0;
 }
 
+// Builds whichever real inference backend the config asks for. Asking for one
+// this binary was not built with is an error, not a fallback: the only reason
+// to select a backend is to get its performance, so silently running the other
+// one would make a benchmark lie.
+[[nodiscard]] Result<Detector> make_backend_detector(const InferenceConfig& config,
+                                                     const std::filesystem::path& model) {
+  switch (config.backend) {
+    case InferenceBackend::openvino:
+#ifdef CAPTURE_EYE_OPENVINO
+      return make_openvino_detector(config, model);
+#else
+      return fail(ErrorCode::config_invalid,
+                  "inference.backend is openvino, but this capture-eye was built without it "
+                  "(configure with -DCAPTURE_EYE_OPENVINO=ON)");
+#endif
+    case InferenceBackend::onnx:
+      break;
+  }
+  return make_onnx_detector(config, model);
+}
+
 // Runs the detector over one image file. This is how detection accuracy gets
 // checked against a known result without a camera, a gimbal, or a person.
 [[nodiscard]] Result<int> detect_image(const Invocation& inv) {
@@ -74,7 +98,7 @@ extern "C" void handle_interrupt(int) {
   const auto model = ensure_model(inv.config.model, *cache_root);
   if (!model) return std::unexpected(model.error());
 
-  auto detector = make_onnx_detector(inv.config.inference, *model);
+  auto detector = make_backend_detector(inv.config.inference, *model);
   if (!detector) return std::unexpected(detector.error());
 
   Frame frame;
@@ -114,10 +138,11 @@ extern "C" void handle_interrupt(int) {
     const auto model = ensure_model(config.model, *cache_root);
     if (!model) return std::unexpected(model.error());
 
-    auto detector = make_onnx_detector(config.inference, *model);
+    auto detector = make_backend_detector(config.inference, *model);
     if (!detector) return std::unexpected(detector.error());
+    std::fprintf(stderr, "detector: %s %s\n", detector->name.c_str(),
+                 model->filename().string().c_str());
     stages.detector = std::move(*detector);
-    std::fprintf(stderr, "detector: onnx %s\n", model->filename().string().c_str());
   }
 
   if (!config.sink.snapshot_path.empty()) {
