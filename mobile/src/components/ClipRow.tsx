@@ -1,6 +1,14 @@
 import React from 'react'
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native'
-import Video from 'react-native-video'
+import {
+  Alert,
+  Image,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
+import Video, { type VideoRef } from 'react-native-video'
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
 import { clipThumbnailUrl, clipUrl, deleteClip } from '../api/client'
 import { accessHeaders, getConfig } from '../lib/config'
@@ -14,15 +22,82 @@ interface Props {
   onDeleted: () => void
 }
 
+const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
+
 export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted }: Props) {
   const headers = accessHeaders(getConfig())
+
+  const videoRef = React.useRef<VideoRef>(null)
 
   // Autoplays on expand; the bottom-left button toggles this.
   const [paused, setPaused] = React.useState(false)
   const [progress, setProgress] = React.useState(0)
   const [duration, setDuration] = React.useState(0)
+  const [ended, setEnded] = React.useState(false)
 
-  // Dim only while collapsed — an expanded clip is being watched right now.
+  // Controls are hidden until the video is tapped.
+  const [controlsVisible, setControlsVisible] = React.useState(false)
+
+  const [trackWidth, setTrackWidth] = React.useState(0)
+  const seeking = React.useRef(false)
+  // Latest values for the PanResponder closure.
+  const durationRef = React.useRef(0)
+  const trackWidthRef = React.useRef(0)
+  durationRef.current = duration
+  trackWidthRef.current = trackWidth
+
+  const seekToFraction = (frac: number) => {
+    const d = durationRef.current
+    if (d <= 0) return
+    const t = clamp(frac, 0, 1) * d
+    setProgress(t)
+    videoRef.current?.seek(t)
+    setEnded(false)
+  }
+
+  const pan = React.useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => {
+        seeking.current = true
+        const w = trackWidthRef.current
+        if (w > 0) {
+          const frac = clamp(e.nativeEvent.locationX / w, 0, 1)
+          setProgress(frac * durationRef.current)
+        }
+      },
+      onPanResponderMove: (e) => {
+        const w = trackWidthRef.current
+        if (w > 0) {
+          const frac = clamp(e.nativeEvent.locationX / w, 0, 1)
+          setProgress(frac * durationRef.current)
+        }
+      },
+      onPanResponderRelease: (e) => {
+        const w = trackWidthRef.current
+        if (w > 0) {
+          seekToFraction(e.nativeEvent.locationX / w)
+        }
+        seeking.current = false
+      },
+      onPanResponderTerminate: () => {
+        seeking.current = false
+      },
+    }),
+  ).current
+
+  const onPlayPause = () => {
+    if (ended) {
+      videoRef.current?.seek(0)
+      setProgress(0)
+      setEnded(false)
+      setPaused(false)
+      return
+    }
+    setPaused((p) => !p)
+  }
+
   const dim = viewed && !expanded
 
   const confirmDelete = () => {
@@ -67,35 +142,54 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted }: Props) 
       {expanded && (
         <View style={styles.videoWrap}>
           <Video
+            ref={videoRef}
             source={{ uri: clipUrl(clip.name), headers }}
             style={styles.video}
             paused={paused}
             resizeMode="contain"
             onLoad={({ duration: d }) => setDuration(d)}
-            onProgress={({ currentTime }) => setProgress(currentTime)}
-            onEnd={() => setPaused(true)}
+            onProgress={({ currentTime }) => {
+              if (!seeking.current) setProgress(currentTime)
+            }}
+            onEnd={() => {
+              setPaused(true)
+              setEnded(true)
+            }}
           />
-          <View style={styles.bar}>
-            <View style={styles.progressTrack}>
+          <Pressable
+            style={styles.tapLayer}
+            onPress={() => setControlsVisible((v) => !v)}
+          />
+          {controlsVisible && (
+            <View style={styles.bar}>
               <View
-                style={[
-                  styles.progressFill,
-                  { width: duration > 0 ? `${Math.min(100, (progress / duration) * 100)}%` : '0%' },
-                ]}
-              />
+                style={styles.trackHit}
+                onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+                {...pan.panHandlers}
+              >
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        width:
+                          duration > 0
+                            ? `${Math.min(100, (progress / duration) * 100)}%`
+                            : '0%',
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+              <Pressable style={styles.playBtn} hitSlop={12} onPress={onPlayPause}>
+                <MaterialCommunityIcons
+                  name={paused ? 'play' : 'pause'}
+                  size={22}
+                  color="#e5e5e5"
+                />
+              </Pressable>
             </View>
-            <Pressable
-              style={styles.playBtn}
-              hitSlop={12}
-              onPress={() => setPaused((p) => !p)}
-            >
-              <MaterialCommunityIcons
-                name={paused ? 'play' : 'pause'}
-                size={22}
-                color="#e5e5e5"
-              />
-            </Pressable>
-          </View>
+          )}
         </View>
       )}
     </View>
@@ -125,6 +219,7 @@ const styles = StyleSheet.create({
   sub: { color: '#8a8a8a', fontSize: 11, marginTop: 2 },
   videoWrap: { width: '100%', height: 220, backgroundColor: '#000' },
   video: { ...StyleSheet.absoluteFillObject },
+  tapLayer: { ...StyleSheet.absoluteFillObject },
   bar: {
     position: 'absolute',
     left: 0,
@@ -136,11 +231,15 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
-  progressTrack: {
+  trackHit: {
     position: 'absolute',
     left: 0,
-    right: 0,
-    top: 0,
+    right: 40,
+    top: -10,
+    height: 22,
+    justifyContent: 'flex-start',
+  },
+  progressTrack: {
     height: 2,
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
