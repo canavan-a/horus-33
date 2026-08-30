@@ -330,6 +330,10 @@ void Pipeline::Impl::device_loop(std::stop_token token) {
         metrics.track_errors.fetch_add(1, std::memory_order_relaxed);
       } else if (is_track) {
         metrics.tracks_sent.fetch_add(1, std::memory_order_relaxed);
+        // Fan the track out to relay clients too (not just the device), so
+        // horus-server can derive a person-present signal from the same
+        // stream that drives the PID loop.
+        if (relay) relay->publish_local(line);
       }
     }
 

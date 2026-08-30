@@ -41,6 +41,12 @@ public:
   // descriptor, state, and anything unmatched) is broadcast to every client.
   void dispatch_incoming(const std::string& line);
 
+  // Injects a line into the client fan-out that did not come from the device --
+  // the pipeline's own outgoing `track` stream, so observers like horus-server
+  // can derive presence from it. Never written to the device. `line` must
+  // already carry its trailing newline (encode_track does).
+  void publish_local(const std::string& line);
+
   [[nodiscard]] std::size_t client_count() const;
 
 private:

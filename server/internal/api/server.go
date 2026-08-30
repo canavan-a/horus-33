@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/canavan-a/horus-33/server/internal/clipadmin"
@@ -65,6 +66,13 @@ type Server struct {
 
 	hub *hub
 
+	// Presence: a debounced "person in frame" signal derived from the track
+	// stream capture-eye now forwards to relay clients. notifyEnabled gates
+	// whether edges are broadcast (POST /api/notify/subscribe); the detector
+	// keeps running regardless so the snapshot stays current.
+	presence      *presenceDetector
+	notifyEnabled atomic.Bool
+
 	// Replay-on-hello: the firmware persists nothing (verified against
 	// firmware/src — no NVS/EEPROM/Preferences anywhere), so every setting
 	// reverts to compiled defaults on reset. Persisting the last value a
@@ -106,8 +114,15 @@ func New(lnk link.Link, replayPath string, clipAdminSocket string, clipsDir stri
 	if clipAdminSocket != "" {
 		s.clipAdmin = clipadmin.New(clipAdminSocket)
 	}
+	s.presence = newPresenceDetector(func(ev PresenceEvent) {
+		if s.notifyEnabled.Load() {
+			s.hub.broadcast(wsEvent{Type: "presence", Presence: &ev})
+		}
+	})
+	s.notifyEnabled.Store(true)
 	s.loadDesired()
 	go s.pump()
+	go s.presenceTicker()
 	if s.clipAdmin != nil {
 		go s.pollClipping()
 	}
@@ -137,6 +152,27 @@ func (s *Server) pollClipping() {
 		}
 	}
 }
+
+// presenceTicker catches the track stream stopping without an explicit `lost`
+// (capture-eye crash, link loss) — observe() alone would leave presence stuck
+// "true" forever in that case.
+func (s *Server) presenceTicker() {
+	for {
+		time.Sleep(presenceTick)
+		s.presence.tick()
+	}
+}
+
+// SetNotifyEnabled toggles whether presence edges are broadcast over the hub.
+// The detector keeps running either way, so the WS initial-burst snapshot is
+// always current.
+func (s *Server) SetNotifyEnabled(enabled bool) { s.notifyEnabled.Store(enabled) }
+
+// NotifyEnabled reports the current presence-broadcast gate.
+func (s *Server) NotifyEnabled() bool { return s.notifyEnabled.Load() }
+
+// PresenceSnapshot is the current debounced presence state.
+func (s *Server) PresenceSnapshot() PresenceEvent { return s.presence.snapshot() }
 
 // ClippingStatus is the JSON shape exposed over REST/WS — kept as its own
 // type (rather than reusing clipadmin.Status directly) so this package's
@@ -295,6 +331,11 @@ func (s *Server) handleMsg(m proto.Msg) {
 		s.state[v.ID] = v.V
 		s.mu.Unlock()
 		s.hub.broadcast(wsEvent{Type: "state", State: &v})
+
+	case proto.Track:
+		// capture-eye forwards its own outgoing track stream to relay clients
+		// (ControlRelay::publish_local); fold it into the presence signal.
+		s.presence.observe(v)
 
 	case proto.Ack:
 		s.completePending(v.Seq, pendingResult{ack: &v})

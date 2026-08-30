@@ -414,6 +414,10 @@ void ControlRelay::dispatch_incoming(const std::string& line) {
   impl_->broadcast(with_newline);
 }
 
+void ControlRelay::publish_local(const std::string& line) {
+  impl_->broadcast(line);
+}
+
 std::size_t ControlRelay::client_count() const {
   const std::scoped_lock lock{impl_->clients_mutex};
   return impl_->clients.size();

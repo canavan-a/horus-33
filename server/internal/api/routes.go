@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,6 +34,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/clips/{name}", s.handleDeleteClip)
 	mux.HandleFunc("GET /api/clipping/status", s.handleClippingStatus)
 	mux.HandleFunc("POST /api/clipping/enabled", s.handleSetClippingEnabled)
+
+	mux.HandleFunc("POST /api/notify/subscribe", s.handleNotifySubscribe)
 
 	return mux
 }
@@ -123,6 +127,30 @@ func (s *Server) handleSetClippingEnabled(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, status)
+}
+
+// handleNotifySubscribe is the client's explicit opt-in to presence events. The
+// hub has no per-client identity (LAN-only, see hub.go), so this is a global
+// gate rather than a real subscription: any client can enable or disable the
+// "presence" broadcast. An empty body means "enable".
+func (s *Server) handleNotifySubscribe(w http.ResponseWriter, r *http.Request) {
+	body := struct {
+		Enabled *bool `json:"enabled"`
+	}{}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		return
+	}
+	enabled := true
+	if body.Enabled != nil {
+		enabled = *body.Enabled
+	}
+	s.SetNotifyEnabled(enabled)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":  "subscribed",
+		"enabled": enabled,
+		"present": s.PresenceSnapshot().Present,
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -260,6 +288,10 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	if clipping, err := s.ClippingStatus(); err == nil {
 		initial = append(initial, wsEvent{Type: "clipping", Clipping: &clipping})
+	}
+	if s.NotifyEnabled() {
+		presence := s.PresenceSnapshot()
+		initial = append(initial, wsEvent{Type: "presence", Presence: &presence})
 	}
 
 	s.hub.Serve(w, r, initial)

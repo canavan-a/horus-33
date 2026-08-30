@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sideloaded LAN utility: the user types an arbitrary host in Settings, and the
+  LAN server speaks plain http:// / ws://. Cleartext is permitted globally;
+  remote use goes over https:// through the Cloudflare tunnel regardless.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

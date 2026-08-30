@@ -12,6 +12,14 @@ Thumbs.db
 !.vscode/extensions.json
 .cache/
 
+# ---- JS / React Native ----
+node_modules/
+mobile/android/app/build/
+mobile/android/.gradle/
+mobile/android/app/release.keystore
+*.keystore
+!mobile/android/app/debug.keystore
+
 # ---- Nix ----
 result
 result-*

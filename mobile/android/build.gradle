@@ -1,0 +1,34 @@
+buildscript {
+    ext {
+        buildToolsVersion = "35.0.0"
+        minSdkVersion = 24
+        compileSdkVersion = 35
+        targetSdkVersion = 34
+        ndkVersion = "27.1.12297006"
+        kotlinVersion = "1.9.24"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+    }
+}
+
+apply plugin: "com.facebook.react.rootproject"
+
+// A few autolinked RN libraries read buildToolsVersion from their own default
+// rather than this repo's ext, which makes Gradle try to fetch an old
+// build-tools into a possibly read-only SDK. Pin it early, before each Android
+// subproject is evaluated.
+subprojects { sp ->
+    sp.plugins.withId("com.android.library") {
+        sp.android { buildToolsVersion rootProject.ext.buildToolsVersion }
+    }
+    sp.plugins.withId("com.android.application") {
+        sp.android { buildToolsVersion rootProject.ext.buildToolsVersion }
+    }
+}
