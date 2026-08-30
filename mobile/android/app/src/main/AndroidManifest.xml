@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
       android:name=".MainApplication"
@@ -31,6 +32,17 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
       </activity>
+
+      <!-- Serves the downloaded APK to the system package installer. -->
+      <provider
+        android:name="androidx.core.content.FileProvider"
+        android:authorities="${applicationId}.updateprovider"
+        android:exported="false"
+        android:grantUriPermissions="true">
+        <meta-data
+          android:name="android.support.FILE_PROVIDER_PATHS"
+          android:resource="@xml/file_paths" />
+      </provider>
 
       <!-- Notifee's foreground service, retyped as dataSync (Android 14+ needs
            a declared type matching a held permission). -->

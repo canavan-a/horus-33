@@ -1,4 +1,4 @@
-import type { Clip, ClippingStatus, Descriptor, LinkSnapshot, Values } from '@/lib/proto'
+import type { ClipsPage, ClippingStatus, Descriptor, LinkSnapshot, Values } from '@/lib/proto'
 
 // Every call is a relative path — dev proxies it (vite.config.ts), production
 // nginx proxies it (the plan's M10). The client never needs to know a host.
@@ -36,7 +36,8 @@ export const refresh = () => request<{ status: string }>('/refresh', { method: '
 
 export const estop = () => request<{ status: string }>('/estop', { method: 'POST' })
 
-export const listClips = () => request<Clip[]>('/clips')
+export const listClips = (offset = 0, limit = 30) =>
+  request<ClipsPage>(`/clips?offset=${offset}&limit=${limit}`)
 
 export const getClippingStatus = () => request<ClippingStatus>('/clipping/status')
 

@@ -1,5 +1,5 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
-import { NavigationContainer } from '@react-navigation/native'
+import { DarkTheme, NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import React, { useEffect, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
@@ -11,6 +11,18 @@ import { StreamScreen } from '../screens/StreamScreen'
 
 const Tab = createBottomTabNavigator()
 const Stack = createNativeStackNavigator()
+
+const horusDark = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: '#111',
+    card: '#111',
+    text: '#e5e5e5',
+    border: '#2a2a2a',
+    primary: '#2563eb',
+  },
+}
 
 const screenOpts = {
   headerStyle: { backgroundColor: '#111' },
@@ -51,7 +63,7 @@ export function RootNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={horusDark}>
       <Stack.Navigator screenOptions={screenOpts}>
         {configured ? (
           <Stack.Screen name="Main" component={Tabs} options={{ headerShown: false }} />

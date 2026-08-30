@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar notification icon: the Eye of Horus mark (web/public/favicon.svg)
+     as a white-on-transparent silhouette. Android tints it by the notification
+     colour and masks it to its alpha. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <group
+        android:pivotX="256"
+        android:pivotY="256"
+        android:scaleX="0.92"
+        android:scaleY="0.92">
+        <path
+            android:strokeColor="#ffffff"
+            android:strokeWidth="26"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M40,256 C136,140 376,140 472,256 C376,372 136,372 40,256 Z" />
+        <path
+            android:strokeColor="#ffffff"
+            android:strokeWidth="26"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M178,256 a78,78 0 1,0 156,0 a78,78 0 1,0 -156,0" />
+        <path
+            android:fillColor="#ffffff"
+            android:pathData="M220,256 a36,36 0 1,0 72,0 a36,36 0 1,0 -72,0" />
+    </group>
+</vector>

@@ -216,6 +216,13 @@ type ClipInfo struct {
 	Thumbnail bool      `json:"thumbnail"`
 }
 
+// ClipsPage is the paginated response of GET /api/clips: one window of the
+// mod-time-sorted list plus the total count so the client knows when to stop.
+type ClipsPage struct {
+	Clips []ClipInfo `json:"clips"`
+	Total int        `json:"total"`
+}
+
 // thumbnailPath is capture-eye's own convention (clip_sink.cpp's
 // generate_thumbnail): the same basename as the clip, .jpg instead of .mp4.
 func thumbnailPath(clipPath string) string {
@@ -225,16 +232,16 @@ func thumbnailPath(clipPath string) string {
 // ListClips reads capture-eye's clips directory directly off disk — both
 // processes run on the same host (see nix/module.nix's clipsDir option), so
 // there is no reason to proxy this through capture-eye at all.
-func (s *Server) ListClips() ([]ClipInfo, error) {
+func (s *Server) ListClips(offset, limit int) (ClipsPage, error) {
 	if s.clipsDir == "" {
-		return nil, errors.New("clips directory not configured")
+		return ClipsPage{}, errors.New("clips directory not configured")
 	}
 	entries, err := os.ReadDir(s.clipsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []ClipInfo{}, nil // nothing recorded yet
+			return ClipsPage{Clips: []ClipInfo{}}, nil // nothing recorded yet
 		}
-		return nil, err
+		return ClipsPage{}, err
 	}
 	clips := make([]ClipInfo, 0, len(entries))
 	for _, e := range entries {
@@ -255,7 +262,16 @@ func (s *Server) ListClips() ([]ClipInfo, error) {
 		})
 	}
 	sort.Slice(clips, func(i, j int) bool { return clips[i].ModTime.After(clips[j].ModTime) })
-	return clips, nil
+
+	total := len(clips)
+	if offset > total {
+		offset = total
+	}
+	end := total
+	if limit > 0 && offset+limit < end {
+		end = offset + limit
+	}
+	return ClipsPage{Clips: clips[offset:end], Total: total}, nil
 }
 
 // ClipsDir exposes the configured directory so routes.go can join and

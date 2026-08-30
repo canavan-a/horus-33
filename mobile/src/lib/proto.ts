@@ -60,6 +60,14 @@ export interface Clip {
   thumbnail: boolean
 }
 
+// GET /api/clips is paginated server-side (server/internal/api/server.go's
+// ClipsPage). The mobile list still renders everything, so client.ts asks for a
+// large window and unwraps this.
+export interface ClipsPage {
+  clips: Clip[]
+  total: number
+}
+
 export type LinkStatus = 'connecting' | 'describing' | 'ready' | 'lost'
 
 // One WebSocket envelope, discriminated by `type` — matches

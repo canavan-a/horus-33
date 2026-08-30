@@ -39,7 +39,7 @@ export async function startMonitoring(): Promise<void> {
     android: {
       channelId: CH_SERVICE,
       importance: AndroidImportance.LOW,
-      smallIcon: 'ic_launcher',
+      smallIcon: 'ic_notification',
       ongoing: true,
       asForegroundService: true,
       foregroundServiceTypes: [AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_DATA_SYNC],

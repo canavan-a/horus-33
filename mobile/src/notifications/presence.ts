@@ -33,7 +33,7 @@ export async function onPresence(ev: PresenceEvent): Promise<void> {
       android: {
         channelId: CH_ALERTS,
         importance: AndroidImportance.HIGH,
-        smallIcon: 'ic_launcher',
+        smallIcon: 'ic_notification',
         pressAction: { id: 'default' },
         timestamp: Date.now(),
         showTimestamp: true,
@@ -49,7 +49,7 @@ export async function onPresence(ev: PresenceEvent): Promise<void> {
       android: {
         channelId: CH_ALERTS,
         importance: AndroidImportance.HIGH,
-        smallIcon: 'ic_launcher',
+        smallIcon: 'ic_notification',
         pressAction: { id: 'default' },
         timestamp: Date.now(),
         showTimestamp: true,

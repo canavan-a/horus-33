@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 
 	"github.com/canavan-a/horus-33/server/internal/proto"
 )
@@ -45,13 +46,30 @@ func (s *Server) Routes() http.Handler {
 // clipsDir when joined onto it.
 var clipNamePattern = regexp.MustCompile(`^[a-zA-Z0-9._-]+\.mp4$`)
 
-func (s *Server) handleListClips(w http.ResponseWriter, _ *http.Request) {
-	clips, err := s.ListClips()
+func (s *Server) handleListClips(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	if offset < 0 {
+		offset = 0
+	}
+	limit := 30
+	if raw := q.Get("limit"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			limit = n
+		}
+	}
+	if limit < 0 {
+		limit = 0
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	page, err := s.ListClips(offset, limit)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, clips)
+	writeJSON(w, http.StatusOK, page)
 }
 
 func (s *Server) handleServeClip(w http.ResponseWriter, r *http.Request) {

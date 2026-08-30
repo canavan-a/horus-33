@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the web app's theme-color (see web/index.html). -->
+    <color name="ic_launcher_background">#1a0f2e</color>
+</resources>

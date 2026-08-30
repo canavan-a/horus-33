@@ -1,5 +1,5 @@
 import { accessHeaders, apiBase, getConfig } from '../lib/config'
-import type { Clip, ClippingStatus, Descriptor, Values } from '../lib/proto'
+import type { Clip, ClipsPage, ClippingStatus, Descriptor, Values } from '../lib/proto'
 
 export class ApiError extends Error {
   status: number
@@ -44,7 +44,16 @@ export const refresh = () => request<{ status: string }>('/refresh', { method: '
 
 export const estop = () => request<{ status: string }>('/estop', { method: 'POST' })
 
-export const listClips = () => request<Clip[]>('/clips')
+// GET /api/clips is paged server-side (max 100/req). The mobile screen shows the
+// whole list, so walk every page and concatenate.
+export const listClips = async (): Promise<Clip[]> => {
+  const clips: Clip[] = []
+  for (;;) {
+    const page = await request<ClipsPage>(`/clips?offset=${clips.length}&limit=100`)
+    clips.push(...page.clips)
+    if (clips.length >= page.total || page.clips.length === 0) return clips
+  }
+}
 
 export const deleteClip = (name: string) =>
   request<{ status: string }>(`/clips/${encodeURIComponent(name)}`, { method: 'DELETE' })

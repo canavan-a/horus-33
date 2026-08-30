@@ -75,6 +75,13 @@ export interface Clip {
   thumbnail: boolean
 }
 
+// One window of GET /api/clips — matches server/internal/api/server.go's
+// ClipsPage. `total` is the full count so the client knows when to stop paging.
+export interface ClipsPage {
+  clips: Clip[]
+  total: number
+}
+
 // The WebSocket envelope horus-server sends — one shape, discriminated by
 // `type`, matching server/internal/api/hub.go's wsEvent exactly.
 export interface WSEvent {

@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import type { Clip, ClippingStatus } from '@/lib/proto'
 import { deleteClip, listClips, setClippingEnabled } from '@/lib/api'
+import { useViewedClips } from '@/hooks/useViewedClips'
 import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+
+const PAGE = 30
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,11 +29,15 @@ function formatSize(bytes: number): string {
 interface ClipRowProps {
   clip: Clip
   expanded: boolean
+  viewed: boolean
   onToggle: () => void
   onDeleted: () => void
 }
 
-function ClipRow({ clip, expanded, onToggle, onDeleted }: ClipRowProps) {
+function ClipRow({ clip, expanded, viewed, onToggle, onDeleted }: ClipRowProps) {
+  // Dim only when collapsed — an expanded clip is being watched right now, so
+  // it always shows in full colour.
+  const dim = viewed && !expanded
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
@@ -48,7 +56,10 @@ function ClipRow({ clip, expanded, onToggle, onDeleted }: ClipRowProps) {
   return (
     <Card>
       <CardContent
-        className={cn('flex gap-3 py-3', expanded ? 'flex-col' : 'items-center')}
+        className={cn(
+          'group flex gap-3 py-3',
+          expanded ? 'flex-col' : 'items-center',
+        )}
       >
         {expanded ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption
@@ -68,7 +79,11 @@ function ClipRow({ clip, expanded, onToggle, onDeleted }: ClipRowProps) {
               <img
                 src={`/api/clips/${encodeURIComponent(clip.name)}/thumbnail`}
                 alt=""
-                className="size-full object-cover"
+                className={cn(
+                  'size-full object-cover transition',
+                  dim &&
+                    'opacity-40 grayscale group-hover:opacity-100 group-hover:grayscale-0',
+                )}
               />
             ) : (
               <div className="flex size-full items-center justify-center text-xs text-muted-foreground">
@@ -85,7 +100,24 @@ function ClipRow({ clip, expanded, onToggle, onDeleted }: ClipRowProps) {
           )}
         >
           <div className="min-w-0 flex-1">
-            <p className="break-words text-sm font-medium">{clip.name}</p>
+            <div className="flex items-center gap-2">
+              <p
+                className={cn(
+                  'min-w-0 break-words text-sm font-medium transition-colors',
+                  dim && 'text-muted-foreground group-hover:text-foreground',
+                )}
+              >
+                {clip.name}
+              </p>
+              {dim && (
+                <Badge
+                  variant="secondary"
+                  className="shrink-0 font-normal text-muted-foreground"
+                >
+                  viewed
+                </Badge>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
               {new Date(clip.modTime).toLocaleString()} · {formatSize(clip.size)}
             </p>
@@ -143,9 +175,15 @@ interface ClipsPanelProps {
 
 export function ClipsPanel({ clipping }: ClipsPanelProps) {
   const [clips, setClips] = useState<Clip[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
   const [toggling, setToggling] = useState(false)
   const [expanded, setExpanded] = useState<string | undefined>(undefined)
+  const { isViewed, markViewed } = useViewedClips()
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  // Guards against overlapping fetches without waiting on a state re-render.
+  const loadingRef = useRef(false)
   // Local, optimistic view of clipping status. Seeded from the prop (the
   // WS-pushed status) but overwritten immediately with the toggle response
   // rather than waiting on the next status broadcast, which can lag up to
@@ -157,22 +195,58 @@ export function ClipsPanel({ clipping }: ClipsPanelProps) {
     setLocal(clipping)
   }, [clipping])
 
-  const refresh = useCallback(() => {
-    listClips()
-      .then(setClips)
+  // Fetch one page. `replace` starts the list over from the top (initial load
+  // or after a new clip likely landed); otherwise the page is appended.
+  const loadPage = useCallback((offset: number, replace: boolean) => {
+    if (loadingRef.current) return
+    loadingRef.current = true
+    setLoading(true)
+    listClips(offset, PAGE)
+      .then((page) => {
+        setTotal(page.total)
+        setClips((prev) => {
+          const base = replace ? [] : prev
+          const seen = new Set(base.map((c) => c.name))
+          // Dedupe by name: a clip recorded mid-scroll shifts every offset by
+          // one, which would otherwise re-serve a row we already have.
+          return [...base, ...page.clips.filter((c) => !seen.has(c.name))]
+        })
+        setError(undefined)
+      })
       .catch((err) => setError(err.message))
+      .finally(() => {
+        loadingRef.current = false
+        setLoading(false)
+      })
   }, [])
 
   useEffect(() => {
-    refresh()
-  }, [refresh])
+    loadPage(0, true)
+  }, [loadPage])
 
-  // Re-fetch the list whenever the recording state changes — a status
-  // broadcast is enough to know a clip probably appeared or is in progress,
-  // without a separate live push of the list itself.
+  // Re-fetch from the top whenever the recording state changes — a status
+  // broadcast is enough to know a clip probably appeared, without a separate
+  // live push of the list itself.
   useEffect(() => {
-    refresh()
-  }, [clipping?.recording, refresh])
+    loadPage(0, true)
+  }, [clipping?.recording, loadPage])
+
+  // Grow the list as the bottom sentinel scrolls into view. Re-created on every
+  // count/total/loading change so the callback always sees fresh values.
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || clips.length >= total) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loadingRef.current) {
+          loadPage(clips.length, false)
+        }
+      },
+      { rootMargin: '400px' },
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [clips.length, total, loading, loadPage])
 
   const handleToggle = useCallback(() => {
     if (local === undefined) return
@@ -190,11 +264,16 @@ export function ClipsPanel({ clipping }: ClipsPanelProps) {
   }, [local, clipping])
 
   const handleRowToggle = useCallback((name: string) => {
-    setExpanded((current) => (current === name ? undefined : name))
-  }, [])
+    setExpanded((current) => {
+      if (current === name) return undefined
+      markViewed(name) // expanding autoplays the clip — count it as watched
+      return name
+    })
+  }, [markViewed])
 
   const handleDeleted = useCallback((name: string) => {
     setClips((current) => current.filter((c) => c.name !== name))
+    setTotal((t) => Math.max(0, t - 1))
     setExpanded((current) => (current === name ? undefined : current))
   }, [])
 
@@ -231,7 +310,7 @@ export function ClipsPanel({ clipping }: ClipsPanelProps) {
         </CardContent>
       </Card>
 
-      {clips.length === 0 && (
+      {!loading && total === 0 && (
         <p className="py-8 text-center text-sm text-muted-foreground">no clips yet</p>
       )}
 
@@ -241,11 +320,23 @@ export function ClipsPanel({ clipping }: ClipsPanelProps) {
             key={clip.name}
             clip={clip}
             expanded={expanded === clip.name}
+            viewed={isViewed(clip.name)}
             onToggle={() => handleRowToggle(clip.name)}
             onDeleted={() => handleDeleted(clip.name)}
           />
         ))}
       </div>
+
+      <div ref={sentinelRef} className="h-px" />
+
+      {loading && (
+        <p className="py-4 text-center text-xs text-muted-foreground">loading…</p>
+      )}
+      {!loading && total > 0 && clips.length >= total && (
+        <p className="py-4 text-center text-xs text-muted-foreground">
+          {total} clip{total === 1 ? '' : 's'}
+        </p>
+      )}
     </div>
   )
 }
