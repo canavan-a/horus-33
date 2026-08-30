@@ -63,3 +63,6 @@ captures/
 .env.*
 !.env.example
 *.local.toml
+# Keep the release/ dir tracked, but ignore its contents (keystore, secrets).
+/release/*
+!/release/.gitignore

@@ -1,6 +1,7 @@
 import React from 'react'
 import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import Video from 'react-native-video'
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
 import { clipThumbnailUrl, clipUrl, deleteClip } from '../api/client'
 import { accessHeaders, getConfig } from '../lib/config'
 import type { Clip } from '../lib/proto'
@@ -15,6 +16,11 @@ interface Props {
 
 export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted }: Props) {
   const headers = accessHeaders(getConfig())
+
+  // Autoplays on expand; the bottom-left button toggles this.
+  const [paused, setPaused] = React.useState(false)
+  const [progress, setProgress] = React.useState(0)
+  const [duration, setDuration] = React.useState(0)
 
   // Dim only while collapsed — an expanded clip is being watched right now.
   const dim = viewed && !expanded
@@ -59,13 +65,38 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted }: Props) 
       </Pressable>
 
       {expanded && (
-        <Video
-          source={{ uri: clipUrl(clip.name), headers }}
-          style={styles.video}
-          controls
-          paused={false}
-          resizeMode="contain"
-        />
+        <View style={styles.videoWrap}>
+          <Video
+            source={{ uri: clipUrl(clip.name), headers }}
+            style={styles.video}
+            paused={paused}
+            resizeMode="contain"
+            onLoad={({ duration: d }) => setDuration(d)}
+            onProgress={({ currentTime }) => setProgress(currentTime)}
+            onEnd={() => setPaused(true)}
+          />
+          <View style={styles.bar}>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: duration > 0 ? `${Math.min(100, (progress / duration) * 100)}%` : '0%' },
+                ]}
+              />
+            </View>
+            <Pressable
+              style={styles.playBtn}
+              hitSlop={12}
+              onPress={() => setPaused((p) => !p)}
+            >
+              <MaterialCommunityIcons
+                name={paused ? 'play' : 'pause'}
+                size={22}
+                color="#e5e5e5"
+              />
+            </Pressable>
+          </View>
+        </View>
       )}
     </View>
   )
@@ -92,5 +123,27 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sub: { color: '#8a8a8a', fontSize: 11, marginTop: 2 },
-  video: { width: '100%', height: 220, backgroundColor: '#000' },
+  videoWrap: { width: '100%', height: 220, backgroundColor: '#000' },
+  video: { ...StyleSheet.absoluteFillObject },
+  bar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  progressTrack: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  progressFill: { height: 2, backgroundColor: '#e5e5e5' },
+  playBtn: { paddingRight: 8 },
 })

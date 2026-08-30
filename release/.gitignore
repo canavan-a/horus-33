@@ -1,0 +1,4 @@
+# This directory holds local signing material (release.keystore, keystore.env,
+# HORUS_KEYSTORE_BASE64.txt). Track the directory, never its contents.
+*
+!.gitignore
