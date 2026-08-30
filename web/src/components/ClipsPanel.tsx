@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react'
 import type { Clip, ClippingStatus } from '@/lib/proto'
 import { deleteClip, listClips, setClippingEnabled } from '@/lib/api'
 import { useViewedClips } from '@/hooks/useViewedClips'
+import { useAppMode } from '@/hooks/useAppMode'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -181,6 +182,8 @@ export function ClipsPanel({ clipping }: ClipsPanelProps) {
   const [toggling, setToggling] = useState(false)
   const [expanded, setExpanded] = useState<string | undefined>(undefined)
   const { isViewed, markViewed } = useViewedClips()
+  const [mode] = useAppMode()
+  const recordingLocked = mode === 'simple'
   const sentinelRef = useRef<HTMLDivElement>(null)
   // Guards against overlapping fetches without waiting on a state re-render.
   const loadingRef = useRef(false)
@@ -296,7 +299,7 @@ export function ClipsPanel({ clipping }: ClipsPanelProps) {
                 type="button"
                 size="sm"
                 variant={local?.enabled ? 'default' : 'outline'}
-                disabled={toggling || local === undefined}
+                disabled={toggling || local === undefined || recordingLocked}
                 onClick={handleToggle}
                 className={local?.enabled ? 'bg-green-600 hover:bg-green-700' : ''}
               >
@@ -306,6 +309,9 @@ export function ClipsPanel({ clipping }: ClipsPanelProps) {
           </div>
           {local === undefined && (
             <p className="text-xs text-muted-foreground">clip admin not available</p>
+          )}
+          {recordingLocked && local !== undefined && (
+            <p className="text-xs text-muted-foreground">recording locked in simple mode</p>
           )}
         </CardContent>
       </Card>

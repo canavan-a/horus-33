@@ -64,5 +64,8 @@ captures/
 !.env.example
 *.local.toml
 # Keep the release/ dir tracked, but ignore its contents (keystore, secrets).
+# release.sh / README.md are the release tooling and are tracked.
 /release/*
 !/release/.gitignore
+!/release/release.sh
+!/release/README.md

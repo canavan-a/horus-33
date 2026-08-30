@@ -20,7 +20,9 @@ serial control loop, with a web UI and a terminal UI for driving it directly.
                           ┌───────────┐      ┌────────────┐
                           │  web UI   │      │ horusctl   │
                           │ (React)   │      │ (TUI, Go)  │
-                          └───────────┘      └────────────┘
+                          │ + mobile  │      └────────────┘
+                          │ (Android) │
+                          └───────────┘
 ```
 
 - **[`capture-eye/`](capture-eye)** — C++23 pipeline: reads V4L2 frames, runs
@@ -42,6 +44,11 @@ serial control loop, with a web UI and a terminal UI for driving it directly.
 - **[`firmware/`](firmware)** — ESP32-S3 (Arduino framework, PlatformIO)
   firmware for the gimbal itself: motor/LED controls, the device side of the
   wire protocol.
+- **[`mobile/`](mobile)** — sideloaded Android client (React Native, direct
+  APK, no Play Store). A deliberately smaller subset of `web/`: jog pad, WHEP
+  video stream, clip list/playback, and a foreground-service WebSocket that
+  raises local "person in frame" notifications in the background. See
+  [`mobile/README.md`](mobile/README.md).
 - **[`docs/protocol.md`](docs/protocol.md)** — the host↔device control
   protocol: newline-delimited JSON over USB CDC serial. Devices advertise
   their own controls (a descriptor), so the host renders whatever it's told
@@ -106,6 +113,10 @@ on the C++ side.
 `go run ./cmd/...`), not packaged as Nix derivations — see the comment in the
 top-level `flake.nix` for why. `web/` is a standard Vite/npm project.
 
+`mobile/` is a bare React Native project — `npm install` then `npm run android`
+for a debug build, or Gradle `assembleRelease` for a signed APK. See
+[`mobile/README.md`](mobile/README.md) for the commands and keystore setup.
+
 Firmware is built and flashed with [PlatformIO](https://platformio.org/)
 from `firmware/`:
 
@@ -119,6 +130,9 @@ pio device monitor
 
 [`nix/module.nix`](nix/module.nix) is a NixOS module wiring capture-eye and
 horus-server up as system services (with `Restart=always`, unlike `dev.sh`).
+
+Mobile release APKs are built by CI (`.github/workflows/mobile-release.yml`) on
+every `mobile-v*` tag and attached to a GitHub Release for sideloading.
 
 ## License
 

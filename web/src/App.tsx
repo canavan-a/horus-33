@@ -1,13 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useHorus } from '@/hooks/useHorus'
 import { ControlPanel } from '@/components/ControlPanel'
 import { JogPad } from '@/components/JogPad'
 import { VideoPanel } from '@/components/VideoPanel'
 import { ClipsPanel } from '@/components/ClipsPanel'
+import { SecretMenu } from '@/components/SecretMenu'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { useSettingsVisible } from '@/hooks/useSettingsVisible'
+import { useAppMode } from '@/hooks/useAppMode'
 import type { LinkStatus } from '@/lib/proto'
 
 const STATUS_LABEL: Record<LinkStatus, string> = {
@@ -32,12 +34,42 @@ function App() {
   const { linkStatus, linkError, descriptor, state, clipping } = useHorus()
   const [view, setView] = useState<'controls' | 'clips'>('controls')
   const [settingsVisible] = useSettingsVisible()
+  const [mode] = useAppMode()
+  const simple = mode === 'simple'
+
+  // Tap the header logo six times (with no pause longer than TAP_RESET_MS
+  // between taps) to open the hidden display-mode menu.
+  const [secretOpen, setSecretOpen] = useState(false)
+  const tapCountRef = useRef(0)
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  useEffect(() => () => clearTimeout(tapTimerRef.current), [])
+
+  const handleLogoTap = () => {
+    clearTimeout(tapTimerRef.current)
+    tapCountRef.current += 1
+    if (tapCountRef.current >= 6) {
+      tapCountRef.current = 0
+      setSecretOpen(true)
+      return
+    }
+    tapTimerRef.current = setTimeout(() => {
+      tapCountRef.current = 0
+    }, 600)
+  }
 
   return (
     <div className="min-h-dvh bg-background">
       <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/75">
         <div className="flex min-w-0 items-center gap-2">
-          <img src="/eye-of-horus.svg" alt="" className="size-6 shrink-0 rounded" />
+          <button
+            type="button"
+            onClick={handleLogoTap}
+            aria-label="horus-33"
+            className="shrink-0 rounded outline-none"
+          >
+            <img src="/eye-of-horus.svg" alt="" className="size-6 rounded" />
+          </button>
           <h1 className="truncate text-base font-semibold sm:text-lg">horus-33</h1>
           <LinkBadge status={linkStatus} />
         </div>
@@ -64,13 +96,13 @@ function App() {
 
         {view === 'controls' ? (
           <>
-            {!descriptor && (
+            {!simple && !descriptor && (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 waiting for the device descriptor…
               </p>
             )}
 
-            {descriptor && (
+            {!simple && descriptor && (
               <JogPad
                 motion={descriptor.controls.find((c) => c.id === 'motion')}
                 motionValues={state.motion ?? {}}
@@ -81,7 +113,7 @@ function App() {
               />
             )}
 
-            {descriptor && settingsVisible && (
+            {!simple && descriptor && settingsVisible && (
               // Single column on phones; two columns once there is room, since a
               // control panel's fields (sliders + numeric entry) want width more
               // than a phone screen wants density. Each panel collapses on its
@@ -97,6 +129,8 @@ function App() {
           <ClipsPanel clipping={clipping} />
         )}
       </main>
+
+      <SecretMenu open={secretOpen} onOpenChange={setSecretOpen} />
     </div>
   )
 }
