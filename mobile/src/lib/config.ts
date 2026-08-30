@@ -36,6 +36,19 @@ const KEY = 'horus.config'
 // service) can read config without awaiting. Kept fresh by load/save.
 let cache: HorusConfig = DEFAULT_CONFIG
 
+// Observers notified whenever the config cache changes (load or save). Lets
+// RootNavigator re-evaluate isConfigured() after first-run setup.
+const listeners = new Set<() => void>()
+
+export function subscribeConfig(cb: () => void): () => void {
+  listeners.add(cb)
+  return () => listeners.delete(cb)
+}
+
+function notify(): void {
+  listeners.forEach((l) => l())
+}
+
 export function getConfig(): HorusConfig {
   return cache
 }
@@ -49,6 +62,7 @@ export async function loadConfig(): Promise<HorusConfig> {
     const raw = await AsyncStorage.getItem(KEY)
     if (raw) {
       cache = { ...DEFAULT_CONFIG, ...(JSON.parse(raw) as Partial<HorusConfig>) }
+      notify()
     }
   } catch {
     // Corrupt or unavailable storage — fall back to defaults.
@@ -58,6 +72,7 @@ export async function loadConfig(): Promise<HorusConfig> {
 
 export async function saveConfig(next: HorusConfig): Promise<void> {
   cache = next
+  notify()
   await AsyncStorage.setItem(KEY, JSON.stringify(next))
 }
 

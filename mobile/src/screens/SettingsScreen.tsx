@@ -1,5 +1,6 @@
 import notifee from '@notifee/react-native'
 import { Picker } from '@react-native-picker/picker'
+import { useRoute } from '@react-navigation/native'
 import React, { useEffect, useState } from 'react'
 import {
   Alert,
@@ -33,20 +34,27 @@ import { startMonitoring, stopMonitoring } from '../service/PresenceService'
 import { reconfigureHorus } from '../ws/useHorus'
 
 export function SettingsScreen() {
+  const isSetup = useRoute().name === 'Setup'
+
   const [cfg, setCfg] = useState<HorusConfig>(DEFAULT_CONFIG)
   const [testResult, setTestResult] = useState<string>()
+  const testOk = testResult?.startsWith('link:') ?? false
 
   const [version, setVersion] = useState<string>()
   const [releases, setReleases] = useState<Release[]>([])
   const [selectedTag, setSelectedTag] = useState<string>()
   const [updateStatus, setUpdateStatus] = useState<string>()
   const [busy, setBusy] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [showDowngrade, setShowDowngrade] = useState(false)
 
   useEffect(() => {
     loadConfig().then(setCfg)
     getVersionInfo()
       .then((v) => setVersion(`${v.versionName} (${v.versionCode})`))
       .catch(() => setVersion('unknown'))
+      .finally(() => void checkUpdates())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -59,28 +67,24 @@ export function SettingsScreen() {
   }, [busy])
 
   const currentVersionName = version?.split(' ')[0]
+  const latest = releases[0]
+  const updateAvailable =
+    !!latest &&
+    !!currentVersionName &&
+    compareVersions(latest.version, currentVersionName) > 0
+  const showVersionPicker = updateAvailable || showDowngrade
 
-  const onCheckUpdates = async () => {
-    setUpdateStatus('Checking…')
+  const checkUpdates = async () => {
+    setChecking(true)
+    setUpdateStatus(undefined)
     try {
       const rs = await fetchReleases()
       setReleases(rs)
-      if (rs.length === 0) {
-        setUpdateStatus('No releases found')
-        return
-      }
-      setSelectedTag((t) => t ?? rs[0].tag)
-      const latest = rs[0]
-      const cmp = currentVersionName
-        ? compareVersions(latest.version, currentVersionName)
-        : 1
-      setUpdateStatus(
-        cmp > 0
-          ? `Update available: v${latest.version}`
-          : `Up to date (latest is v${latest.version})`,
-      )
+      setSelectedTag((t) => t ?? rs[0]?.tag)
     } catch (e) {
       setUpdateStatus(`Check failed: ${String(e)}`)
+    } finally {
+      setChecking(false)
     }
   }
 
@@ -114,7 +118,7 @@ export function SettingsScreen() {
   const set = <K extends keyof HorusConfig>(k: K, v: HorusConfig[K]) =>
     setCfg((c) => ({ ...c, [k]: v }))
 
-  const onSave = async () => {
+  const persist = async () => {
     await saveConfig(cfg)
     reconfigureHorus()
     notifySubscribe(true).catch(() => {})
@@ -124,6 +128,10 @@ export function SettingsScreen() {
     } else {
       await stopMonitoring()
     }
+  }
+
+  const onSave = async () => {
+    await persist()
     Alert.alert('Saved')
   }
 
@@ -190,6 +198,12 @@ export function SettingsScreen() {
       </TouchableOpacity>
       {testResult ? <Text style={styles.hint}>{testResult}</Text> : null}
 
+      {isSetup && testOk && (
+        <TouchableOpacity style={styles.btn} onPress={() => persist()}>
+          <Text style={styles.btnText}>Continue</Text>
+        </TouchableOpacity>
+      )}
+
       {Platform.OS === 'android' && (
         <TouchableOpacity
           style={styles.btnOutline}
@@ -200,39 +214,53 @@ export function SettingsScreen() {
       )}
 
       <Text style={styles.section}>Updates</Text>
-      <Text style={styles.hint}>Current version: {version ?? '…'}</Text>
+      <TouchableOpacity onPress={checkUpdates} disabled={checking}>
+        <Text style={styles.hint}>
+          {checking
+            ? 'Checking…'
+            : latest
+              ? updateAvailable
+                ? `Update available: v${latest.version}`
+                : `Up to date (v${latest.version})`
+              : `Current version: ${version ?? '…'}`}
+        </Text>
+      </TouchableOpacity>
 
-      {releases.length > 0 && (
-        <View style={styles.pickerWrap}>
-          <Picker
-            selectedValue={selectedTag}
-            onValueChange={(v) => setSelectedTag(String(v))}
-            dropdownIconColor="#e5e5e5"
-            style={styles.picker}
-          >
-            {releases.map((r, i) => (
-              <Picker.Item
-                key={r.tag}
-                label={i === 0 ? `Latest — v${r.version}` : `v${r.version}`}
-                value={r.tag}
-                color="#111"
-              />
-            ))}
-          </Picker>
-        </View>
+      {!showVersionPicker && latest && (
+        <TouchableOpacity onPress={() => setShowDowngrade(true)}>
+          <Text style={styles.linkText}>Downgrade</Text>
+        </TouchableOpacity>
       )}
 
-      <TouchableOpacity style={styles.btnOutline} onPress={onCheckUpdates}>
-        <Text style={styles.btnOutlineText}>Check for updates</Text>
-      </TouchableOpacity>
-      {releases.length > 0 && (
-        <TouchableOpacity
-          style={[styles.btn, busy && styles.btnDisabled]}
-          disabled={busy}
-          onPress={onInstallUpdate}
-        >
-          <Text style={styles.btnText}>Download &amp; install</Text>
-        </TouchableOpacity>
+      {showVersionPicker && (
+        <>
+          <View style={styles.pickerWrap}>
+            <Picker
+              selectedValue={selectedTag}
+              onValueChange={(v) => setSelectedTag(String(v))}
+              dropdownIconColor="#e5e5e5"
+              style={styles.picker}
+            >
+              {releases.map((r, i) => (
+                <Picker.Item
+                  key={r.tag}
+                  label={i === 0 ? `Latest — v${r.version}` : `v${r.version}`}
+                  value={r.tag}
+                  color="#111"
+                />
+              ))}
+            </Picker>
+          </View>
+          <TouchableOpacity
+            style={[styles.btn, busy && styles.btnDisabled]}
+            disabled={busy}
+            onPress={onInstallUpdate}
+          >
+            <Text style={styles.btnText}>
+              {updateAvailable ? `Update to v${latest.version}` : 'Install selected version'}
+            </Text>
+          </TouchableOpacity>
+        </>
       )}
       {updateStatus ? <Text style={styles.hint}>{updateStatus}</Text> : null}
 
@@ -299,4 +327,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnOutlineText: { color: '#e5e5e5' },
+  linkText: { color: '#2563eb', fontSize: 12 },
 })
