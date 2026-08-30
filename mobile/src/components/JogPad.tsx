@@ -4,9 +4,11 @@ import { estop } from '../api/client'
 import { patch } from '../lib/patch'
 import type { Values } from '../lib/proto'
 
-// Ported from web/src/components/JogPad.tsx — identical semantics.
-const HOLD_THRESHOLD_MS = 250
-const BURST_MS = 120
+// Ported from web/src/components/JogPad.tsx. Tuned tighter for touch: a
+// fingertip tap holds contact far longer than a mouse click, so the burst is
+// measured from press-start (see release()) and the constants are shorter.
+const HOLD_THRESHOLD_MS = 200
+const BURST_MS = 90
 const PID_SPEED_PRESETS = [50, 100, 200, 400, 800]
 
 type Direction = 'up' | 'down' | 'left' | 'right'
@@ -27,6 +29,7 @@ interface ActiveMove {
   holdTimer: ReturnType<typeof setTimeout>
   burstTimer?: ReturnType<typeof setTimeout>
   held: boolean
+  startedAt: number
 }
 
 interface Props {
@@ -66,7 +69,7 @@ export function JogPad({ motionValues, axisXValues, axisYValues, hasMotion, hasA
         const a = active.current[d]
         if (a) a.held = true
       }, HOLD_THRESHOLD_MS)
-      active.current[d] = { holdTimer, held: false }
+      active.current[d] = { holdTimer, held: false, startedAt: Date.now() }
     },
     [manual, setRun],
   )
@@ -80,7 +83,10 @@ export function JogPad({ motionValues, axisXValues, axisYValues, hasMotion, hasA
         return
       }
       clearTimeout(a.holdTimer)
-      a.burstTimer = setTimeout(() => stop(d), BURST_MS)
+      // Measure the burst from press-start, not from release, so a long-held
+      // fingertip tap doesn't nudge further than a quick one.
+      const remaining = Math.max(0, BURST_MS - (Date.now() - a.startedAt))
+      a.burstTimer = setTimeout(() => stop(d), remaining)
     },
     [stop],
   )

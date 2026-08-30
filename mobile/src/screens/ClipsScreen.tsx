@@ -3,21 +3,39 @@ import { FlatList, RefreshControl, StyleSheet, Switch, Text, View } from 'react-
 import { getClippingStatus, listClips, setClippingEnabled } from '../api/client'
 import { ClipRow } from '../components/ClipRow'
 import type { Clip } from '../lib/proto'
+import { useViewedClips } from '../lib/useViewedClips'
 import { useHorus } from '../ws/useHorus'
 
 export function ClipsScreen() {
   const snap = useHorus()
+  const { isViewed, markViewed, viewedCount } = useViewedClips()
   const [clips, setClips] = useState<Clip[]>([])
   const [loading, setLoading] = useState(false)
   const [enabled, setEnabled] = useState<boolean | undefined>(snap.clipping?.enabled)
+  // Single-open accordion: only one clip is expanded/playing at a time.
+  const [openName, setOpenName] = useState<string>()
 
   const refresh = useCallback(() => {
     setLoading(true)
     listClips()
-      .then(setClips)
+      .then((cs) => {
+        setClips(cs)
+        setOpenName((cur) => (cur && cs.some((c) => c.name === cur) ? cur : undefined))
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+  const handleToggle = useCallback(
+    (name: string) => {
+      setOpenName((cur) => {
+        if (cur === name) return undefined
+        markViewed(name) // expanding autoplays the clip — count it as watched
+        return name
+      })
+    },
+    [markViewed],
+  )
 
   useEffect(() => {
     refresh()
@@ -55,8 +73,17 @@ export function ClipsScreen() {
       </View>
       <FlatList
         data={clips}
+        extraData={`${openName ?? ''}:${viewedCount}`}
         keyExtractor={(c) => c.name}
-        renderItem={({ item }) => <ClipRow clip={item} onDeleted={refresh} />}
+        renderItem={({ item }) => (
+          <ClipRow
+            clip={item}
+            viewed={isViewed(item.name)}
+            expanded={item.name === openName}
+            onToggle={() => handleToggle(item.name)}
+            onDeleted={refresh}
+          />
+        )}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
         ListEmptyComponent={<Text style={styles.empty}>no clips yet</Text>}
       />

@@ -34,8 +34,8 @@ const screenOpts = {
 } as const
 
 const TAB_ICONS: Record<string, string> = {
-  Stream: 'video',
-  Clips: 'movie-open',
+  Stream: 'cctv',
+  Clips: 'filmstrip-box-multiple',
   Settings: 'cog',
 }
 
