@@ -55,9 +55,7 @@ HORUS_KEYSTORE_PASSWORD=... HORUS_KEY_ALIAS=horus HORUS_KEY_PASSWORD=... \
 
 Output: `android/app/build/outputs/apk/release/app-release.apk`.
 
-CI (`.github/workflows/mobile-release.yml`) does this on every `mobile-v*` tag,
-signing from `HORUS_KEYSTORE_BASE64` + friends in repo secrets, and attaches the
-APK to a GitHub Release.
+Releases are built and published locally from this command; there is no release CI.
 
 Create the keystore once:
 

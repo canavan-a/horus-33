@@ -1,11 +1,13 @@
 import React from 'react'
 import {
+  ActivityIndicator,
   Alert,
   Image,
   PanResponder,
   Pressable,
   StyleSheet,
   Text,
+  Vibration,
   View,
 } from 'react-native'
 import Video, { type VideoRef } from 'react-native-video'
@@ -20,11 +22,14 @@ interface Props {
   expanded: boolean
   onToggle: () => void
   onDeleted: () => void
+  // When true (and not expanded), mount a hidden paused player so ExoPlayer
+  // buffers the clip's opening segment ahead of the next tap.
+  preload?: boolean
 }
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
 
-export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted }: Props) {
+export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted, preload }: Props) {
   const headers = accessHeaders(getConfig())
 
   const videoRef = React.useRef<VideoRef>(null)
@@ -34,9 +39,20 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted }: Props) 
   const [progress, setProgress] = React.useState(0)
   const [duration, setDuration] = React.useState(0)
   const [ended, setEnded] = React.useState(false)
+  // First frame shown — until then the thumbnail poster + spinner cover the black box.
+  const [ready, setReady] = React.useState(false)
 
   // Controls are hidden until the video is tapped.
   const [controlsVisible, setControlsVisible] = React.useState(false)
+
+  // Hold the right half of the video to play at 2x until release.
+  const [boosting, setBoosting] = React.useState(false)
+  const wrapWidth = React.useRef(0)
+  const pressX = React.useRef(0)
+
+  const endBoost = () => {
+    if (boosting) setBoosting(false)
+  }
 
   const [trackWidth, setTrackWidth] = React.useState(0)
   const seeking = React.useRef(false)
@@ -139,14 +155,32 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted }: Props) 
         </View>
       </Pressable>
 
+      {preload && !expanded && (
+        <Video
+          source={{ uri: clipUrl(clip.name), headers }}
+          style={styles.warm}
+          paused
+          muted
+          bufferConfig={{ minBufferMs: 2000, bufferForPlaybackMs: 1000 }}
+        />
+      )}
+
       {expanded && (
-        <View style={styles.videoWrap}>
+        <View
+          style={styles.videoWrap}
+          onLayout={(e) => {
+            wrapWidth.current = e.nativeEvent.layout.width
+          }}
+        >
           <Video
             ref={videoRef}
             source={{ uri: clipUrl(clip.name), headers }}
             style={styles.video}
-            paused={paused}
+            paused={paused && !boosting}
+            rate={boosting ? 2 : 1}
             resizeMode="contain"
+            onLoadStart={() => setReady(false)}
+            onReadyForDisplay={() => setReady(true)}
             onLoad={({ duration: d }) => setDuration(d)}
             onProgress={({ currentTime }) => {
               if (!seeking.current) setProgress(currentTime)
@@ -156,10 +190,38 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted }: Props) 
               setEnded(true)
             }}
           />
+          {!ready && (
+            <View style={styles.loading}>
+              {clip.thumbnail && (
+                <Image
+                  source={{ uri: clipThumbnailUrl(clip.name), headers }}
+                  style={StyleSheet.absoluteFillObject}
+                  resizeMode="contain"
+                />
+              )}
+              <ActivityIndicator color="#e5e5e5" />
+            </View>
+          )}
           <Pressable
             style={styles.tapLayer}
+            delayLongPress={250}
+            onPressIn={(e) => {
+              pressX.current = e.nativeEvent.locationX
+            }}
             onPress={() => setControlsVisible((v) => !v)}
+            onLongPress={() => {
+              if (wrapWidth.current > 0 && pressX.current > wrapWidth.current / 2) {
+                Vibration.vibrate(15)
+                setBoosting(true)
+              }
+            }}
+            onPressOut={endBoost}
           />
+          {boosting && (
+            <View style={styles.boostBadge} pointerEvents="none">
+              <Text style={styles.boostText}>2x ▶▶</Text>
+            </View>
+          )}
           {controlsVisible && (
             <View style={styles.bar}>
               <View
@@ -219,7 +281,23 @@ const styles = StyleSheet.create({
   sub: { color: '#8a8a8a', fontSize: 11, marginTop: 2 },
   videoWrap: { width: '100%', height: 220, backgroundColor: '#000' },
   video: { ...StyleSheet.absoluteFillObject },
+  warm: { width: 0, height: 0 },
+  loading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   tapLayer: { ...StyleSheet.absoluteFillObject },
+  boostBadge: {
+    position: 'absolute',
+    top: 10,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  boostText: { color: '#e5e5e5', fontSize: 12, fontWeight: '600' },
   bar: {
     position: 'absolute',
     left: 0,

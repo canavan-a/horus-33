@@ -131,8 +131,8 @@ pio device monitor
 [`nix/module.nix`](nix/module.nix) is a NixOS module wiring capture-eye and
 horus-server up as system services (with `Restart=always`, unlike `dev.sh`).
 
-Mobile release APKs are built by CI (`.github/workflows/mobile-release.yml`) on
-every `mobile-v*` tag and attached to a GitHub Release for sideloading.
+Mobile release APKs are built and published locally — see
+[`mobile/README.md`](mobile/README.md#release-apk).
 
 ## License
 

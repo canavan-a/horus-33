@@ -55,6 +55,15 @@ export function ClipsScreen() {
     if (snap.clipping) setEnabled(snap.clipping.enabled)
   }, [snap.clipping])
 
+  // Warm the clips most likely to be tapped next: the rows directly above and
+  // below the open one. With none open, just warm the first clip.
+  const openIdx = clips.findIndex((c) => c.name === openName)
+  const preloadNames =
+    openIdx >= 0
+      ? [clips[openIdx - 1]?.name, clips[openIdx + 1]?.name].filter(Boolean)
+      : [clips[0]?.name].filter(Boolean)
+  const preloadKey = preloadNames.join(',')
+
   const toggle = (next: boolean) => {
     setEnabled(next) // optimistic
     setClippingEnabled(next)
@@ -73,13 +82,14 @@ export function ClipsScreen() {
       </View>
       <FlatList
         data={clips}
-        extraData={`${openName ?? ''}:${viewedCount}`}
+        extraData={`${openName ?? ''}:${preloadKey}:${viewedCount}`}
         keyExtractor={(c) => c.name}
         renderItem={({ item }) => (
           <ClipRow
             clip={item}
             viewed={isViewed(item.name)}
             expanded={item.name === openName}
+            preload={preloadNames.includes(item.name)}
             onToggle={() => handleToggle(item.name)}
             onDeleted={refresh}
           />
