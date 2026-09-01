@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 40,
     top: -10,
-    height: 22,
+    height: 44,
     justifyContent: 'flex-start',
   },
   progressTrack: {
