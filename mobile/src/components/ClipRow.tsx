@@ -115,6 +115,7 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted, preload }
   }
 
   const dim = viewed && !expanded
+  const fracPct = duration > 0 ? Math.min(100, (progress / duration) * 100) : 0
 
   const confirmDelete = () => {
     Alert.alert('Delete clip', clip.name, [
@@ -230,25 +231,16 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted, preload }
           {controlsVisible && (
             <View style={styles.bar}>
               <View
-                style={styles.trackHit}
+                style={styles.scrubber}
                 onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
                 {...pan.panHandlers}
               >
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      {
-                        width:
-                          duration > 0
-                            ? `${Math.min(100, (progress / duration) * 100)}%`
-                            : '0%',
-                      },
-                    ]}
-                  />
+                <View style={styles.track}>
+                  <View style={[styles.fill, { width: `${fracPct}%` }]} />
                 </View>
+                <View style={[styles.knob, { left: `${fracPct}%` }]} />
               </View>
-              <Pressable style={styles.playBtn} hitSlop={12} onPress={onPlayPause}>
+              <Pressable hitSlop={12} onPress={onPlayPause}>
                 <MaterialCommunityIcons
                   name={paused ? 'play' : 'pause'}
                   size={22}
@@ -310,22 +302,31 @@ const styles = StyleSheet.create({
     bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 8,
     paddingVertical: 6,
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
-  trackHit: {
-    position: 'absolute',
-    left: 0,
-    right: 40,
-    top: -10,
-    height: 44,
-    justifyContent: 'flex-start',
+  scrubber: {
+    flex: 1,
+    height: 32,
+    position: 'relative',
+    justifyContent: 'center',
   },
-  progressTrack: {
-    height: 2,
+  track: {
+    width: '100%',
+    height: 4,
+    borderRadius: 2,
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
-  progressFill: { height: 2, backgroundColor: '#e5e5e5' },
-  playBtn: { paddingRight: 8 },
+  fill: { height: 4, borderRadius: 2, backgroundColor: '#e5e5e5' },
+  knob: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#e5e5e5',
+    top: '50%',
+    transform: [{ translateX: -6 }, { translateY: -6 }],
+  },
 })
