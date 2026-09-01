@@ -179,6 +179,11 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted, preload }
             paused={paused && !boosting}
             rate={boosting ? 2 : 1}
             resizeMode="contain"
+            // Clips have no audio; keep the player silent and never grab
+            // audio focus so it doesn't duck/pause the user's music.
+            muted
+            disableFocus
+            mixWithOthers="mix"
             onLoadStart={() => setReady(false)}
             onReadyForDisplay={() => setReady(true)}
             onLoad={({ duration: d }) => setDuration(d)}
