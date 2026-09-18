@@ -6,6 +6,7 @@ import { ActivityIndicator, View } from 'react-native'
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
 import { getConfig, isConfigured, loadConfig, subscribeConfig } from '../lib/config'
 import { ClipsScreen } from '../screens/ClipsScreen'
+import { ConsoleScreen } from '../screens/ConsoleScreen'
 import { SettingsScreen } from '../screens/SettingsScreen'
 import { StreamScreen } from '../screens/StreamScreen'
 
@@ -36,6 +37,7 @@ const screenOpts = {
 const TAB_ICONS: Record<string, string> = {
   Stream: 'cctv',
   Clips: 'filmstrip-box-multiple',
+  Console: 'console',
   Settings: 'cog',
 }
 
@@ -55,6 +57,7 @@ function Tabs() {
     >
       <Tab.Screen name="Stream" component={StreamScreen} />
       <Tab.Screen name="Clips" component={ClipsScreen} />
+      <Tab.Screen name="Console" component={ConsoleScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   )

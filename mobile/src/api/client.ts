@@ -44,6 +44,11 @@ export const refresh = () => request<{ status: string }>('/refresh', { method: '
 
 export const estop = () => request<{ status: string }>('/estop', { method: 'POST' })
 
+// Restart capture-eye's systemd unit. No in-app admin check on this endpoint
+// (see server/internal/api/console.go) — access control is left to whatever
+// Cloudflare Access policy the deployment scopes to /api/console/*.
+export const consoleRestart = () => request<{ status: string }>('/console/restart', { method: 'POST' })
+
 // GET /api/clips is paged server-side (max 100/req). The mobile screen shows the
 // whole list, so walk every page and concatenate.
 export const listClips = async (): Promise<Clip[]> => {

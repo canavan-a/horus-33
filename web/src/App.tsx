@@ -4,6 +4,7 @@ import { ControlPanel } from '@/components/ControlPanel'
 import { JogPad } from '@/components/JogPad'
 import { VideoPanel } from '@/components/VideoPanel'
 import { ClipsPanel } from '@/components/ClipsPanel'
+import { ConsolePanel } from '@/components/ConsolePanel'
 import { SecretMenu } from '@/components/SecretMenu'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -32,7 +33,7 @@ function LinkBadge({ status }: { status: LinkStatus }) {
 
 function App() {
   const { linkStatus, linkError, descriptor, state, clipping } = useHorus()
-  const [view, setView] = useState<'controls' | 'clips'>('controls')
+  const [view, setView] = useState<'controls' | 'clips' | 'console'>('controls')
   const [settingsVisible] = useSettingsVisible()
   const [mode] = useAppMode()
   const simple = mode === 'simple'
@@ -84,6 +85,9 @@ function App() {
           <Button variant={view === 'clips' ? 'default' : 'outline'} size="sm" onClick={() => setView('clips')}>
             clips
           </Button>
+          <Button variant={view === 'console' ? 'default' : 'outline'} size="sm" onClick={() => setView('console')}>
+            console
+          </Button>
         </div>
       </header>
 
@@ -125,8 +129,10 @@ function App() {
               </div>
             )}
           </>
-        ) : (
+        ) : view === 'clips' ? (
           <ClipsPanel clipping={clipping} />
+        ) : (
+          <ConsolePanel />
         )}
       </main>
 

@@ -89,6 +89,11 @@ export function wsUrl(c: HorusConfig): string {
   return `wss://${c.host}/api/ws`
 }
 
+// Live journalctl stream for capture-eye.
+export function consoleWsUrl(c: HorusConfig): string {
+  return `wss://${c.host}/api/console/ws`
+}
+
 // MediaMTX's WHEP endpoint, reverse-proxied under the tunnel host at /whep/eye.
 export function whepUrl(c: HorusConfig): string {
   return `https://${c.host}/whep/eye`

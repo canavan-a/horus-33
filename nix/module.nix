@@ -391,9 +391,27 @@ in
         RestartSec = 2;
         User = "horus-server";
         Group = "horus-server";
-        SupplementaryGroups = [ "horus" "horus-clips" ]; # relay socket + clip files, both owned by capture-eye
+        # relay socket + clip files (capture-eye-owned) + reading capture-eye's
+        # journal for the console websocket (console.go's handleConsoleWS).
+        SupplementaryGroups = [ "horus" "horus-clips" "systemd-journal" ];
       };
     };
+
+    # horus-server has no sudo and is not root, but console.go's restart route
+    # needs to run `systemctl restart horus-capture-eye.service` as horus-server.
+    # Scoped to that one unit and that one verb rather than a blanket polkit
+    # grant, so a compromised horus-server process can't restart/stop anything
+    # else on the host.
+    security.polkit.extraConfig = ''
+      polkit.addRule(function(action, subject) {
+        if (action.id == "org.freedesktop.systemd1.manage-units" &&
+            action.lookup("unit") == "horus-capture-eye.service" &&
+            (action.lookup("verb") == "restart" || action.lookup("verb") == "start") &&
+            subject.user == "horus-server") {
+          return polkit.Result.YES;
+        }
+      });
+    '';
 
     # --- MediaMTX: RTSP ingest from capture-eye, WHEP egress to browsers ---
     systemd.services.horus-mediamtx = {

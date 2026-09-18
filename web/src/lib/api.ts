@@ -50,3 +50,15 @@ export const setClippingEnabled = (enabled: boolean) =>
 
 export const deleteClip = (name: string) =>
   request<{ status: string }>(`/clips/${encodeURIComponent(name)}`, { method: 'DELETE' })
+
+// Restart capture-eye's systemd unit. No in-app admin check — see
+// server/internal/api/console.go's package comment: this is expected to sit
+// behind a Cloudflare Access policy scoped to admins.
+export const consoleRestart = () => request<{ status: string }>('/console/restart', { method: 'POST' })
+
+// Live journalctl stream for capture-eye, relative to the current origin so
+// it goes through the same dev/prod proxy as every other /api call.
+export function consoleWsUrl(): string {
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${window.location.host}${BASE}/console/ws`
+}

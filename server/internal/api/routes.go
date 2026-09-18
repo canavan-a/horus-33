@@ -38,6 +38,11 @@ func (s *Server) Routes() http.Handler {
 
 	mux.HandleFunc("POST /api/notify/subscribe", s.handleNotifySubscribe)
 
+	// Scope a Cloudflare Access policy to /api/console/* for admins — see
+	// console.go's package comment. There is no in-app auth check here.
+	mux.HandleFunc("POST /api/console/restart", s.handleConsoleRestart)
+	mux.HandleFunc("GET /api/console/ws", s.handleConsoleWS)
+
 	return mux
 }
 
