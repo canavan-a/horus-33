@@ -45,6 +45,11 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted, preload }
   // Controls are hidden until the video is tapped.
   const [controlsVisible, setControlsVisible] = React.useState(false)
 
+  // Only clips recorded with clipping.audio have a track; the toggle hides
+  // for the rest. Starts muted, like the live stream.
+  const [hasAudio, setHasAudio] = React.useState(false)
+  const [muted, setMuted] = React.useState(true)
+
   // Hold the right half of the video to play at 2x until release.
   const [boosting, setBoosting] = React.useState(false)
   const wrapWidth = React.useRef(0)
@@ -180,14 +185,17 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted, preload }
             paused={paused && !boosting}
             rate={boosting ? 2 : 1}
             resizeMode="contain"
-            // Clips have no audio; keep the player silent and never grab
-            // audio focus so it doesn't duck/pause the user's music.
-            muted
-            disableFocus
-            mixWithOthers="mix"
+            // While muted, never grab audio focus so the user's music keeps
+            // playing undisturbed; unmuted, behave like any media player.
+            muted={muted}
+            disableFocus={muted}
+            mixWithOthers={muted ? 'mix' : undefined}
             onLoadStart={() => setReady(false)}
             onReadyForDisplay={() => setReady(true)}
-            onLoad={({ duration: d }) => setDuration(d)}
+            onLoad={({ duration: d, audioTracks }) => {
+              setDuration(d)
+              setHasAudio(audioTracks.length > 0)
+            }}
             onProgress={({ currentTime }) => {
               if (!seeking.current) setProgress(currentTime)
             }}
@@ -247,6 +255,15 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted, preload }
                   color="#e5e5e5"
                 />
               </Pressable>
+              {hasAudio && (
+                <Pressable hitSlop={12} onPress={() => setMuted((m) => !m)}>
+                  <MaterialCommunityIcons
+                    name={muted ? 'volume-off' : 'volume-high'}
+                    size={22}
+                    color="#e5e5e5"
+                  />
+                </Pressable>
+              )}
             </View>
           )}
         </View>

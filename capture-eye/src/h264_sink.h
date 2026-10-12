@@ -1,10 +1,14 @@
 #pragma once
 
+#include <memory>
+
 #include "config.h"
 #include "error.h"
 #include "frame_sink.h"
 
 namespace capture_eye {
+
+class AudioSource;
 
 // Encodes annotated frames to H.264 and publishes them over RTSP.
 //
@@ -18,11 +22,10 @@ namespace capture_eye {
 // retains a frame past the call — which is exactly the contract the overlay's
 // scratch buffer requires.
 //
-// With audio.device set, the same stream also carries the microphone as Opus
-// (see AudioTrack). A mic that fails to open is logged and the stream goes
-// out video-only: losing audio should never cost the video or the tracking.
+// With a non-null `audio`, the same stream also carries the microphone as
+// Opus (see AudioSource); null means video-only.
 [[nodiscard]] Result<FrameSink> make_h264_rtsp_sink(const SinkConfig& config,
-                                                    const AudioConfig& audio, int width,
+                                                    std::shared_ptr<AudioSource> audio, int width,
                                                     int height, int fps);
 
 } // namespace capture_eye

@@ -12,8 +12,11 @@ extern "C" {
 #include <chrono>
 #include <cstdio>
 #include <format>
+#include <optional>
 #include <vector>
 
+#include "audio_ring.h"
+#include "audio_source.h"
 #include "clip_policy.h"
 #include "frame_mat.h"
 #include "h264_encoder.h"
@@ -69,12 +72,18 @@ private:
   std::size_t count_ = 0;
 };
 
-[[nodiscard]] Result<std::unique_ptr<Encoder>> open_clip_file(const std::filesystem::path& path,
-                                                              int width, int height, int fps,
-                                                              int bitrate_kbps,
-                                                              bool hardware_encode,
-                                                              const std::filesystem::path& vaapi_device) {
-  auto encoder = std::make_unique<Encoder>();
+struct ClipFile {
+  std::unique_ptr<Encoder> encoder;
+  AVStream* audio_stream = nullptr;  // owned by encoder->format; null = video-only
+};
+
+[[nodiscard]] Result<ClipFile> open_clip_file(const std::filesystem::path& path, int width,
+                                              int height, int fps, int bitrate_kbps,
+                                              bool hardware_encode,
+                                              const std::filesystem::path& vaapi_device,
+                                              const AudioSource* audio) {
+  ClipFile clip{.encoder = std::make_unique<Encoder>()};
+  auto& encoder = clip.encoder;
 
   AVFormatContext* format = nullptr;
   const std::string path_str = path.string();
@@ -88,6 +97,14 @@ private:
                                               hardware_encode, vaapi_device);
       !configured) {
     return std::unexpected(configured.error());
+  }
+
+  // Opus reused straight from the live encoder — no second encode. Android's
+  // player and Chrome/Firefox play Opus in MP4.
+  if (audio != nullptr) {
+    auto added = audio->add_stream(format);
+    if (!added) return std::unexpected(added.error());
+    clip.audio_stream = *added;
   }
 
   // Moves the moov atom to the front so a fully-written clip is playable and
@@ -107,7 +124,7 @@ private:
     return fail(ErrorCode::sink_failed, std::format("write header {}: {}", path_str, av_error(header)));
   }
   encoder->header_written = true;
-  return encoder;
+  return clip;
 }
 
 // Re-decodes the just-finished clip to grab a frame from the middle, so the
@@ -151,12 +168,15 @@ void generate_thumbnail(const std::filesystem::path& clip_path) {
 class ClipSink {
 public:
   ClipSink(ClippingConfig config, int width, int height, int fps,
-          std::shared_ptr<ClipRuntime> runtime)
+          std::shared_ptr<ClipRuntime> runtime, std::shared_ptr<AudioSource> audio,
+          std::shared_ptr<AudioRing> audio_ring)
       : config_{std::move(config)},
         width_{width},
         height_{height},
         fps_{fps},
         runtime_{std::move(runtime)},
+        audio_{std::move(audio)},
+        audio_ring_{std::move(audio_ring)},
         preroll_{static_cast<std::size_t>(config_.pre_roll_seconds * fps), width, height} {
     policy_.stop_after_ticks = config_.stop_after_ticks;
   }
@@ -188,12 +208,34 @@ public:
     }
 
     if (active_ != nullptr) {
+      write_audio_until(annotated.captured_at);
       if (const auto encoded = active_->encode(annotated); !encoded) return encoded;
     }
     return {};
   }
 
 private:
+  // Moves buffered audio into the open clip, up to the frame about to be
+  // encoded. Runs here on the overlay thread, so the audio thread never
+  // touches a clip file: it only fills audio_ring_, and this is the only
+  // reader. Audio that lands just after its frame (it trails capture by a
+  // packet or two) is picked up with the next frame instead.
+  void write_audio_until(Clock::time_point until) {
+    if (audio_stream_ == nullptr || !active_->started) return;
+    // Starts just before the clip's first frame — which, after a pre-roll, is
+    // a second or so in the past, so the ring's buffered audio covers it.
+    if (!audio_cursor_) audio_cursor_ = active_->first_frame - Clock::duration{1};
+
+    for (const auto& packet : audio_ring_->between(*audio_cursor_, until)) {
+      audio_cursor_ = packet.captured_at;
+      if (const auto ok = mux_audio_packet(*active_, audio_stream_, packet, active_->first_frame);
+          !ok) {
+        // A lost audio packet is a gap in the clip, never a reason to stop it.
+        std::fprintf(stderr, "clip: audio: %s\n", to_string(ok.error()).c_str());
+      }
+    }
+  }
+
   [[nodiscard]] Result<void> start_clip() {
     std::error_code ec;
     std::filesystem::create_directories(config_.output_dir, ec);
@@ -206,10 +248,12 @@ private:
     temp_path_ = current_path_;
     temp_path_ += ".tmp";
 
-    auto encoder = open_clip_file(temp_path_, width_, height_, fps_, config_.bitrate_kbps,
-                                  config_.hardware_encode, config_.vaapi_device);
-    if (!encoder) return std::unexpected(encoder.error());
-    active_ = std::move(*encoder);
+    auto clip = open_clip_file(temp_path_, width_, height_, fps_, config_.bitrate_kbps,
+                               config_.hardware_encode, config_.vaapi_device, audio_.get());
+    if (!clip) return std::unexpected(clip.error());
+    active_ = std::move(clip->encoder);
+    audio_stream_ = clip->audio_stream;
+    audio_cursor_.reset();
 
     // Drain the pre-roll first — oldest to newest — so the clip includes the
     // moment just before the person was first detected, not just from this
@@ -239,6 +283,7 @@ private:
   void finish_clip() {
     if (active_ == nullptr) return;
     active_.reset();  // destructor writes the trailer and closes the file
+    audio_stream_ = nullptr;
     runtime_->set_recording(false);
 
     std::error_code ec;
@@ -257,10 +302,14 @@ private:
   int height_;
   int fps_;
   std::shared_ptr<ClipRuntime> runtime_;
+  std::shared_ptr<AudioSource> audio_;     // null = clips are video-only
+  std::shared_ptr<AudioRing> audio_ring_;  // filled by audio_'s thread
   PreRollBuffer preroll_;
   ClipPolicy policy_;
   std::uint64_t last_detection_seq_ = 0;
   std::unique_ptr<Encoder> active_;
+  AVStream* audio_stream_ = nullptr;                  // in active_'s muxer
+  std::optional<Clock::time_point> audio_cursor_;    // last audio packet written to active_
   std::filesystem::path current_path_;
   std::filesystem::path temp_path_;
   std::uint64_t clip_counter_ = 0;
@@ -268,7 +317,8 @@ private:
 
 } // namespace
 
-Result<ClipSinkHandle> make_clip_sink(const ClippingConfig& config, int width, int height,
+Result<ClipSinkHandle> make_clip_sink(const ClippingConfig& config,
+                                      std::shared_ptr<AudioSource> audio, int width, int height,
                                       int fps) {
   if (config.output_dir.empty()) {
     return fail(ErrorCode::config_invalid, "clip sink needs clipping.output_dir");
@@ -278,7 +328,19 @@ Result<ClipSinkHandle> make_clip_sink(const ClippingConfig& config, int width, i
   auto runtime = std::make_shared<ClipRuntime>();
   runtime->set_enabled(config.enabled);
 
-  auto state = std::make_shared<ClipSink>(config, width, height, fps, runtime);
+  // Holds the pre-roll's worth of audio plus headroom for the packet or two
+  // that trail each video frame.
+  std::shared_ptr<AudioRing> ring;
+  if (audio) {
+    ring = std::make_shared<AudioRing>(
+        std::chrono::duration_cast<Clock::duration>(
+            std::chrono::duration<double>{config.pre_roll_seconds}) +
+        std::chrono::seconds{2});
+    audio->subscribe([ring](const AudioPacket& packet) { ring->push(packet); });
+  }
+
+  auto state = std::make_shared<ClipSink>(config, width, height, fps, runtime, std::move(audio),
+                                          std::move(ring));
 
   FrameSink sink;
   sink.name = "clip";

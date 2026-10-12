@@ -99,3 +99,14 @@ TEST_CASE("load_config_file: an unknown audio key is a hard error") {
   TempFile file(R"({"audio": {"rate": 16000}})");
   CHECK_FALSE(load_config_file(file.path).has_value());
 }
+
+TEST_CASE("load_config_file: clipping.audio is read as a bool") {
+  TempFile file(R"({"clipping": {"audio": true}})");
+  const auto overlay = load_config_file(file.path);
+  REQUIRE(overlay.has_value());
+  REQUIRE(overlay->clipping.audio.has_value());
+  CHECK(*overlay->clipping.audio);
+
+  TempFile wrong(R"({"clipping": {"audio": "yes"}})");
+  CHECK_FALSE(load_config_file(wrong.path).has_value());
+}

@@ -91,6 +91,7 @@ ClippingConfig merge_clipping(ClippingConfig c, const ClippingConfigOverlay& o) 
   layer(c.admin_socket_path, o.admin_socket_path);
   layer(c.pre_roll_seconds, o.pre_roll_seconds);
   layer(c.stop_after_ticks, o.stop_after_ticks);
+  layer(c.audio, o.audio);
   layer(c.bitrate_kbps, o.bitrate_kbps);
   layer(c.hardware_encode, o.hardware_encode);
   layer(c.vaapi_device, o.vaapi_device);
@@ -170,10 +171,14 @@ Result<void> validate(const AppConfig& config) {
                 std::format("audio.bitrate_kbps: must be positive, got {}",
                             config.audio.bitrate_kbps));
   }
-  // Audio only rides the RTSP stream; a device with nowhere to go is a
+  // A device with nowhere to go (no stream, no clips taking audio) is a
   // misconfiguration, not something to open and then silently discard.
-  if (!config.audio.device.empty() && config.sink.rtsp_url.empty()) {
-    return fail(ErrorCode::config_invalid, "audio.device: needs sink.rtsp_url");
+  if (!config.audio.device.empty() && config.sink.rtsp_url.empty() && !config.clipping.audio) {
+    return fail(ErrorCode::config_invalid,
+                "audio.device: needs sink.rtsp_url or clipping.audio");
+  }
+  if (config.clipping.audio && config.audio.device.empty()) {
+    return fail(ErrorCode::config_invalid, "clipping.audio: needs audio.device");
   }
   if (config.tracking.lock_iou < 0.0f || config.tracking.lock_iou > 1.0f) {
     return fail(ErrorCode::config_invalid,

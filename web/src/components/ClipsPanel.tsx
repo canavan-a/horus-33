@@ -67,6 +67,9 @@ function ClipRow({ clip, expanded, viewed, onToggle, onDeleted }: ClipRowProps) 
           <video
             controls
             autoPlay
+            // Clips may carry mic audio (clipping.audio); start muted like the
+            // live stream — the player's own control unmutes.
+            muted
             className="aspect-video w-full rounded bg-muted"
             src={`/api/clips/${encodeURIComponent(clip.name)}`}
           />

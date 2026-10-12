@@ -139,6 +139,7 @@ Clipping:
                            (default 1.0)
   --clip-stop-ticks N     consecutive no-person inference ticks before a clip
                            stops (default 40)
+  --clip-audio            include mic audio in clips; needs --audio-device
 
 Modes:
   --check-config       load and validate the config, then exit; opens no
@@ -355,6 +356,8 @@ Result<Invocation> parse_args(std::span<const std::string_view> args) {
       const auto n = parse_int(arg, *v);
       if (!n) return std::unexpected(n.error());
       o.clipping.stop_after_ticks = *n;
+    } else if (arg == "--clip-audio") {
+      o.clipping.audio = true;
 
     } else {
       return fail(ErrorCode::config_invalid, std::format("unknown flag: '{}'", arg));

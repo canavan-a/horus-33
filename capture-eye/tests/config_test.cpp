@@ -124,3 +124,15 @@ TEST_CASE("validate: audio is off by default and range-checked when configured")
   config.sink.rtsp_url = "rtsp://127.0.0.1:8554/eye";
   CHECK(validate(config).has_value());
 }
+
+TEST_CASE("validate: clip audio is opt-in and needs a mic") {
+  AppConfig config;
+  CHECK_FALSE(config.clipping.audio);
+
+  config.clipping.audio = true;
+  CHECK_FALSE(validate(config).has_value());  // no audio.device
+
+  // With clips taking the audio, the mic no longer needs an RTSP stream.
+  config.audio.device = "plughw:CARD=Camera,DEV=0";
+  CHECK(validate(config).has_value());
+}

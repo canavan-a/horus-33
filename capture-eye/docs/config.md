@@ -128,7 +128,9 @@ or driver is unavailable, capture-eye logs the reason and falls back to libx264.
 
 Adds a microphone to the RTSP stream as an Opus track, so WebRTC viewers get
 audio and video in one session, in sync. Off unless `device` is set, and it
-needs `sink.rtsp_url`. Clips stay video-only.
+needs `sink.rtsp_url` or `clipping.audio`. The mic is opened once and encoded
+once; the stream and clips share it. Clips only take audio when
+`clipping.audio` is also on.
 
 | key | type | flag |
 |---|---|---|
@@ -196,6 +198,19 @@ disk full) is logged and otherwise ignored; it never affects recording itself.
 | `bitrate_kbps` | integer, >0 | — |
 | `hardware_encode` | bool | — |
 | `vaapi_device` | string | — |
+| `audio` | bool, needs `audio.device` | `--clip-audio` |
+
+`audio` adds the mic to clips as an Opus track, pre-roll included, so a clip
+has the sound from the moment before someone was detected as well as the
+picture. It's off by default even when `audio.device` is set: a recording kept
+on disk is a different privacy question from a live feed (and recording
+conversations without consent is restricted in some places), so turning on the
+mic never quietly starts saving it. The Opus packets are the same ones the
+live stream sends, with no second encode. Android's player and Chrome/Firefox
+play Opus in MP4. Older iOS Safari doesn't.
+
+If the mic is down when a clip starts, that clip is video-only. If the mic
+drops mid-clip, the clip keeps recording with no audio from that point.
 
 ## Errors
 

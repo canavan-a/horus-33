@@ -215,9 +215,9 @@ template <typename T>
 }
 
 [[nodiscard]] Result<void> parse_clipping(const Json& obj, ClippingConfigOverlay& c) {
-  static constexpr std::array<std::string_view, 8> kKnown{
+  static constexpr std::array<std::string_view, 9> kKnown{
       "enabled",     "output_dir",  "admin_socket_path", "pre_roll_seconds",
-      "stop_after_ticks", "bitrate_kbps", "hardware_encode", "vaapi_device"};
+      "stop_after_ticks", "bitrate_kbps", "hardware_encode", "vaapi_device", "audio"};
   if (const auto ok = reject_unknown_keys(obj, "clipping", kKnown); !ok) return ok;
 
   if (obj.contains("enabled")) TRY_ASSIGN(c.enabled, as<bool>(obj["enabled"], "clipping.enabled"));
@@ -230,6 +230,7 @@ template <typename T>
     TRY_ASSIGN(c.pre_roll_seconds, as<double>(obj["pre_roll_seconds"], "clipping.pre_roll_seconds"));
   if (obj.contains("stop_after_ticks"))
     TRY_ASSIGN(c.stop_after_ticks, as<int>(obj["stop_after_ticks"], "clipping.stop_after_ticks"));
+  if (obj.contains("audio")) TRY_ASSIGN(c.audio, as<bool>(obj["audio"], "clipping.audio"));
   if (obj.contains("bitrate_kbps"))
     TRY_ASSIGN(c.bitrate_kbps, as<int>(obj["bitrate_kbps"], "clipping.bitrate_kbps"));
   if (obj.contains("hardware_encode"))

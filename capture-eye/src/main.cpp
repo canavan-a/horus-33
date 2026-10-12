@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "args.h"
+#include "audio_source.h"
 #include "clip_admin.h"
 #include "clip_sink.h"
 #include "config_file.h"
@@ -165,20 +166,36 @@ extern "C" void handle_interrupt(int) {
     stages.device_link = make_stdout_device_link();
   }
 
+  // One reader for the mic, shared by the stream and the clips. A mic that
+  // fails to open is logged and everything carries on video-only: losing
+  // audio should never cost the video or the tracking. Declared before the
+  // pipeline so it outlives the sinks subscribed to it.
+  std::shared_ptr<AudioSource> audio;
+  if (!config.audio.device.empty()) {
+    auto opened = AudioSource::open(config.audio);
+    if (opened) {
+      audio = std::move(*opened);
+    } else {
+      std::fprintf(stderr, "audio: %s; continuing without audio\n",
+                   to_string(opened.error()).c_str());
+    }
+  }
+
   // The encoder needs the real decoded frame size, which is only known once the
   // camera has negotiated a format. clip_runtime escapes the lambda so a
   // ClipAdmin can be bound to it afterward, once the pipeline is up.
   std::shared_ptr<ClipRuntime> clip_runtime;
-  const auto late_sinks = [&config, &clip_runtime](int width, int height,
-                                                   int fps) -> Result<std::vector<FrameSink>> {
+  const auto late_sinks = [&config, &clip_runtime, &audio](
+                              int width, int height, int fps) -> Result<std::vector<FrameSink>> {
     std::vector<FrameSink> sinks;
     if (!config.sink.rtsp_url.empty()) {
-      auto h264 = make_h264_rtsp_sink(config.sink, config.audio, width, height, fps);
+      auto h264 = make_h264_rtsp_sink(config.sink, audio, width, height, fps);
       if (!h264) return std::unexpected(h264.error());
       sinks.push_back(std::move(*h264));
     }
     if (config.clipping.enabled || !config.clipping.output_dir.empty()) {
-      auto clip = make_clip_sink(config.clipping, width, height, fps);
+      auto clip = make_clip_sink(config.clipping, config.clipping.audio ? audio : nullptr, width,
+                                 height, fps);
       if (!clip) return std::unexpected(clip.error());
       clip_runtime = clip->runtime;
       sinks.push_back(std::move(clip->sink));
@@ -188,6 +205,8 @@ extern "C" void handle_interrupt(int) {
 
   auto pipeline = Pipeline::create(config, std::move(stages), late_sinks);
   if (!pipeline) return std::unexpected(pipeline.error());
+  // Every subscriber is in now (subscribe isn't locked against the reader).
+  if (audio) audio->start();
 
   std::unique_ptr<ClipAdmin> clip_admin;
   if (clip_runtime && !config.clipping.admin_socket_path.empty()) {

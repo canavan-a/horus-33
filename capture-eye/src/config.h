@@ -141,6 +141,10 @@ struct ClippingConfig {
   int bitrate_kbps = 4000;
   bool hardware_encode = false;  // opt-in, for the reasons SinkConfig gives
   std::filesystem::path vaapi_device = "/dev/dri/renderD128";
+  // Mic audio in clips (needs audio.device). Opt-in separately from the live
+  // stream's audio: a recording kept on disk is a different privacy question
+  // from a live feed, so turning on the mic never quietly starts saving it.
+  bool audio = false;
 };
 
 struct AppConfig {
@@ -234,6 +238,7 @@ struct ClippingConfigOverlay {
   std::optional<std::filesystem::path> admin_socket_path;
   std::optional<double> pre_roll_seconds;
   std::optional<int> stop_after_ticks;
+  std::optional<bool> audio;
   std::optional<int> bitrate_kbps;
   std::optional<bool> hardware_encode;
   std::optional<std::filesystem::path> vaapi_device;

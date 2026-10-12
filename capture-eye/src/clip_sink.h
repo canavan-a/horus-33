@@ -11,6 +11,8 @@
 
 namespace capture_eye {
 
+class AudioSource;
+
 // Live state behind a clip sink: whether recording is on, and whether a clip
 // is active right now. clip_admin.cpp toggles/reads this from its own accept
 // thread; the pipeline's overlay thread is the only one that ever encodes a
@@ -54,7 +56,11 @@ struct ClipSinkHandle {
 // instant. One frame is encoded and written to disk per submit() call — see
 // clip_sink.cpp — so memory use stays flat regardless of clip length; the
 // only frames ever held in memory are the bounded pre-roll ring buffer.
-[[nodiscard]] Result<ClipSinkHandle> make_clip_sink(const ClippingConfig& config, int width,
-                                                    int height, int fps);
+//
+// With a non-null `audio`, clips also carry the mic as Opus, pre-roll
+// included; null means video-only clips.
+[[nodiscard]] Result<ClipSinkHandle> make_clip_sink(const ClippingConfig& config,
+                                                    std::shared_ptr<AudioSource> audio,
+                                                    int width, int height, int fps);
 
 } // namespace capture_eye

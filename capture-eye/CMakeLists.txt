@@ -53,6 +53,7 @@ add_library(capture_eye_core STATIC
   src/target_selector.cpp
   src/emission_policy.cpp
   src/clip_policy.cpp
+  src/audio_ring.cpp
   src/yolo_output.cpp
   src/metrics.cpp
 )
@@ -71,7 +72,7 @@ add_library(capture_eye_io STATIC
   src/snapshot_sink.cpp
   src/h264_encoder.cpp
   src/h264_sink.cpp
-  src/audio_track.cpp
+  src/audio_source.cpp
   src/clip_sink.cpp
   src/clip_admin.cpp
   src/pipeline.cpp
@@ -124,6 +125,7 @@ add_executable(capture-eye-tests
   tests/clip_policy_test.cpp
   tests/error_test.cpp
   tests/yolo_output_test.cpp
+  tests/audio_ring_test.cpp
 )
 target_link_libraries(capture-eye-tests
   PRIVATE capture_eye_core capture_eye_io Catch2::Catch2WithMain
