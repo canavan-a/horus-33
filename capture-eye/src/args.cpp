@@ -127,6 +127,8 @@ Output:
   --hw-encode          encode with VAAPI instead of libx264 (off by default)
   --no-hw-encode       force software encode (libx264)
   --vaapi-device PATH  render node for hardware encode (default /dev/dri/renderD128)
+  --audio-device NAME  add this ALSA capture device to the RTSP stream as Opus,
+                        e.g. plughw:CARD=Camera,DEV=0 (off unless given)
 
 Clipping:
   --clip                  record a clip whenever a person is detected; needs --clip-dir
@@ -326,6 +328,10 @@ Result<Invocation> parse_args(std::span<const std::string_view> args) {
       const auto v = value_for(arg);
       if (!v) return std::unexpected(v.error());
       o.sink.vaapi_device = *v;
+    } else if (arg == "--audio-device") {
+      const auto v = value_for(arg);
+      if (!v) return std::unexpected(v.error());
+      o.audio.device = std::string{*v};
 
     } else if (arg == "--clip") {
       o.clipping.enabled = true;

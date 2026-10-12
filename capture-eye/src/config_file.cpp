@@ -192,6 +192,17 @@ template <typename T>
   return {};
 }
 
+[[nodiscard]] Result<void> parse_audio(const Json& obj, AudioConfigOverlay& c) {
+  static constexpr std::array<std::string_view, 3> kKnown{"device", "channels", "bitrate_kbps"};
+  if (const auto ok = reject_unknown_keys(obj, "audio", kKnown); !ok) return ok;
+
+  if (obj.contains("device")) TRY_ASSIGN(c.device, as<std::string>(obj["device"], "audio.device"));
+  if (obj.contains("channels")) TRY_ASSIGN(c.channels, as<int>(obj["channels"], "audio.channels"));
+  if (obj.contains("bitrate_kbps"))
+    TRY_ASSIGN(c.bitrate_kbps, as<int>(obj["bitrate_kbps"], "audio.bitrate_kbps"));
+  return {};
+}
+
 [[nodiscard]] Result<void> parse_ingress(const Json& obj, IngressConfigOverlay& c) {
   static constexpr std::array<std::string_view, 2> kKnown{"socket_path", "max_clients"};
   if (const auto ok = reject_unknown_keys(obj, "ingress", kKnown); !ok) return ok;
@@ -255,8 +266,9 @@ Result<ConfigOverlay> load_config_file(const std::filesystem::path& path) {
                 std::format("--config: {}: top level must be an object", path.string()));
   }
 
-  static constexpr std::array<std::string_view, 8> kSections{
-      "capture", "model", "inference", "serial", "tracking", "sink", "ingress", "clipping"};
+  static constexpr std::array<std::string_view, 9> kSections{
+      "capture", "model", "inference", "serial", "tracking", "sink", "audio", "ingress",
+      "clipping"};
   if (const auto ok = reject_unknown_keys(root, "<top level>", kSections); !ok) {
     return std::unexpected(ok.error());
   }
@@ -284,6 +296,10 @@ Result<ConfigOverlay> load_config_file(const std::filesystem::path& path) {
   }
   if (root.contains("sink")) {
     if (const auto ok = parse_sink(root["sink"], overlay.sink); !ok)
+      return std::unexpected(ok.error());
+  }
+  if (root.contains("audio")) {
+    if (const auto ok = parse_audio(root["audio"], overlay.audio); !ok)
       return std::unexpected(ok.error());
   }
   if (root.contains("ingress")) {

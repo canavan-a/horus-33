@@ -1,4 +1,4 @@
-import { RTCPeerConnection, type MediaStream } from 'react-native-webrtc'
+import { RTCPeerConnection, type MediaStream, type MediaStreamTrack } from 'react-native-webrtc'
 import { accessHeaders, getConfig, whepUrl } from '../lib/config'
 
 // Parse RFC 8288 Link headers advertising ICE servers, e.g.
@@ -30,10 +30,15 @@ export interface WhepSession {
   close: () => void
 }
 
-// Runs the WHEP handshake and resolves once a remote track is attached.
-// onState reports 'connecting' | 'live' | 'failed'.
+// Runs the WHEP handshake and resolves once the video track is attached.
+// onState reports 'connecting' | 'live' | 'failed'. onAudio fires with the
+// mic track when the host publishes one (capture-eye's `audio` config); it may
+// land before or after the video, and never fires on a video-only host. Remote
+// audio plays on its own once received, so the caller owns muting it via
+// track.enabled.
 export async function connectWhep(
   onState: (s: 'connecting' | 'live' | 'failed') => void,
+  onAudio?: (track: MediaStreamTrack) => void,
 ): Promise<WhepSession> {
   const c = getConfig()
   const url = whepUrl(c)
@@ -46,11 +51,16 @@ export async function connectWhep(
 
   const pc = new RTCPeerConnection({ iceServers })
   pc.addTransceiver('video', { direction: 'recvonly' })
+  pc.addTransceiver('audio', { direction: 'recvonly' })
 
   let resolved = false
   const session: Promise<WhepSession> = new Promise((resolve, reject) => {
     // @ts-expect-error react-native-webrtc event typing
-    pc.addEventListener('track', (event: { streams: MediaStream[] }) => {
+    pc.addEventListener('track', (event: { track: MediaStreamTrack; streams: MediaStream[] }) => {
+      if (event.track.kind === 'audio') {
+        onAudio?.(event.track)
+        return
+      }
       if (resolved) return
       resolved = true
       resolve({

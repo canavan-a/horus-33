@@ -125,14 +125,20 @@ Result<void> Encoder::encode(const AnnotatedFrame& annotated) {
     av_packet_rescale_ts(packet.get(), codec->time_base, stream->time_base);
     packet->stream_index = stream->index;
 
-    // Writes the compressed packet through libav's own AVIOContext, i.e. an
-    // actual write() to disk (or the network socket) right here — nothing
-    // above this call buffers more than the one frame in flight.
-    const int written = av_interleaved_write_frame(format.get(), packet.get());
-    av_packet_unref(packet.get());
-    if (written < 0) {
-      return fail(ErrorCode::sink_failed, std::format("write: {}", av_error(written)));
-    }
+    if (const auto written = write(packet.get()); !written) return written;
+  }
+  return {};
+}
+
+Result<void> Encoder::write(AVPacket* to_write) {
+  // Writes the compressed packet through libav's own AVIOContext, i.e. an
+  // actual write() to disk (or the network socket) right here — nothing
+  // above this call buffers more than the one frame in flight.
+  const std::scoped_lock lock{write_mutex};
+  const int written = av_interleaved_write_frame(format.get(), to_write);
+  av_packet_unref(to_write);
+  if (written < 0) {
+    return fail(ErrorCode::sink_failed, std::format("write: {}", av_error(written)));
   }
   return {};
 }

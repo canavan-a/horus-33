@@ -303,8 +303,8 @@ in
         # capture-eye currently exits outright when a frame sink fails at
         # startup (e.g. MediaMTX not up yet) — Restart=always is what makes
         # that self-heal rather than requiring manual intervention.
-        DynamicUser = false; # needs stable access to /dev/video*, /dev/ttyACM0, /dev/dri
-        SupplementaryGroups = [ "video" "dialout" "render" "horus-clips" ];
+        DynamicUser = false; # needs stable access to /dev/video*, /dev/ttyACM0, /dev/dri, /dev/snd
+        SupplementaryGroups = [ "video" "dialout" "render" "audio" "horus-clips" ];
         # capture-eye resolves its model cache from $XDG_CACHE_HOME, then $HOME
         # (model_store.cpp's default_cache_root), and treats "neither is set" as
         # invalid config — a systemd unit has neither, so without this it can

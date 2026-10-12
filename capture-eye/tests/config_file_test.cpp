@@ -83,3 +83,19 @@ TEST_CASE("load_config_file: an empty object is valid and produces an empty over
   REQUIRE(overlay.has_value());
   CHECK_FALSE(overlay->capture.fps.has_value());
 }
+
+TEST_CASE("load_config_file: the audio section populates the overlay") {
+  TempFile file(R"({"audio": {"device": "plughw:CARD=Camera,DEV=0", "channels": 2}})");
+  const auto overlay = load_config_file(file.path);
+  REQUIRE(overlay.has_value());
+  REQUIRE(overlay->audio.device.has_value());
+  CHECK(*overlay->audio.device == "plughw:CARD=Camera,DEV=0");
+  REQUIRE(overlay->audio.channels.has_value());
+  CHECK(*overlay->audio.channels == 2);
+  CHECK_FALSE(overlay->audio.bitrate_kbps.has_value());
+}
+
+TEST_CASE("load_config_file: an unknown audio key is a hard error") {
+  TempFile file(R"({"audio": {"rate": 16000}})");
+  CHECK_FALSE(load_config_file(file.path).has_value());
+}

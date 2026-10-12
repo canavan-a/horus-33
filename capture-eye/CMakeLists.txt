@@ -18,7 +18,7 @@ find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SERIALPORT REQUIRED IMPORTED_TARGET libserialport)
 pkg_check_modules(CURL REQUIRED IMPORTED_TARGET libcurl)
-pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavcodec libavformat libavutil libswscale)
+pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavcodec libavdevice libavformat libavutil libswscale)
 
 # onnxruntime ships no CMake config in nixpkgs; the shell puts it on the
 # default include/link paths.
@@ -71,6 +71,7 @@ add_library(capture_eye_io STATIC
   src/snapshot_sink.cpp
   src/h264_encoder.cpp
   src/h264_sink.cpp
+  src/audio_track.cpp
   src/clip_sink.cpp
   src/clip_admin.cpp
   src/pipeline.cpp

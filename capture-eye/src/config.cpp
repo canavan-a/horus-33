@@ -72,6 +72,13 @@ SinkConfig merge_sink(SinkConfig c, const SinkConfigOverlay& o) {
   return c;
 }
 
+AudioConfig merge_audio(AudioConfig c, const AudioConfigOverlay& o) {
+  layer(c.device, o.device);
+  layer(c.channels, o.channels);
+  layer(c.bitrate_kbps, o.bitrate_kbps);
+  return c;
+}
+
 IngressConfig merge_ingress(IngressConfig c, const IngressConfigOverlay& o) {
   layer(c.socket_path, o.socket_path);
   layer(c.max_clients, o.max_clients);
@@ -100,6 +107,7 @@ AppConfig merge(const AppConfig& base, const ConfigOverlay& file, const ConfigOv
   result.serial = merge_serial(result.serial, file.serial);
   result.tracking = merge_tracking(result.tracking, file.tracking);
   result.sink = merge_sink(result.sink, file.sink);
+  result.audio = merge_audio(result.audio, file.audio);
   result.ingress = merge_ingress(result.ingress, file.ingress);
   result.clipping = merge_clipping(result.clipping, file.clipping);
 
@@ -109,6 +117,7 @@ AppConfig merge(const AppConfig& base, const ConfigOverlay& file, const ConfigOv
   result.serial = merge_serial(result.serial, flags.serial);
   result.tracking = merge_tracking(result.tracking, flags.tracking);
   result.sink = merge_sink(result.sink, flags.sink);
+  result.audio = merge_audio(result.audio, flags.audio);
   result.ingress = merge_ingress(result.ingress, flags.ingress);
   result.clipping = merge_clipping(result.clipping, flags.clipping);
   return result;
@@ -151,6 +160,20 @@ Result<void> validate(const AppConfig& config) {
   if (config.sink.bitrate_kbps <= 0) {
     return fail(ErrorCode::config_invalid,
                 std::format("bitrate: must be positive, got {}", config.sink.bitrate_kbps));
+  }
+  if (config.audio.channels != 1 && config.audio.channels != 2) {
+    return fail(ErrorCode::config_invalid,
+                std::format("audio.channels: expected 1 or 2, got {}", config.audio.channels));
+  }
+  if (config.audio.bitrate_kbps <= 0) {
+    return fail(ErrorCode::config_invalid,
+                std::format("audio.bitrate_kbps: must be positive, got {}",
+                            config.audio.bitrate_kbps));
+  }
+  // Audio only rides the RTSP stream; a device with nowhere to go is a
+  // misconfiguration, not something to open and then silently discard.
+  if (!config.audio.device.empty() && config.sink.rtsp_url.empty()) {
+    return fail(ErrorCode::config_invalid, "audio.device: needs sink.rtsp_url");
   }
   if (config.tracking.lock_iou < 0.0f || config.tracking.lock_iou > 1.0f) {
     return fail(ErrorCode::config_invalid,

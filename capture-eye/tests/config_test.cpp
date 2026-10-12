@@ -105,3 +105,22 @@ TEST_CASE("merge: flip flags default off and layer like any other bool") {
   CHECK_FALSE(merged.capture.flip_horizontal);
   CHECK(merged.capture.flip_vertical);
 }
+
+TEST_CASE("validate: audio is off by default and range-checked when configured") {
+  AppConfig config;
+  CHECK(config.audio.device.empty());
+
+  config.audio.channels = 3;
+  CHECK_FALSE(validate(config).has_value());
+  config.audio.channels = 1;
+
+  config.audio.bitrate_kbps = 0;
+  CHECK_FALSE(validate(config).has_value());
+  config.audio.bitrate_kbps = 32;
+
+  // Audio only rides the RTSP stream, so a device without one is rejected.
+  config.audio.device = "plughw:CARD=Camera,DEV=0";
+  CHECK_FALSE(validate(config).has_value());
+  config.sink.rtsp_url = "rtsp://127.0.0.1:8554/eye";
+  CHECK(validate(config).has_value());
+}

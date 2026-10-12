@@ -173,7 +173,7 @@ extern "C" void handle_interrupt(int) {
                                                    int fps) -> Result<std::vector<FrameSink>> {
     std::vector<FrameSink> sinks;
     if (!config.sink.rtsp_url.empty()) {
-      auto h264 = make_h264_rtsp_sink(config.sink, width, height, fps);
+      auto h264 = make_h264_rtsp_sink(config.sink, config.audio, width, height, fps);
       if (!h264) return std::unexpected(h264.error());
       sinks.push_back(std::move(*h264));
     }

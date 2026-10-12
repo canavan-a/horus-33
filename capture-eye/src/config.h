@@ -106,6 +106,17 @@ struct SinkConfig {
   std::filesystem::path vaapi_device = "/dev/dri/renderD128";
 };
 
+// Microphone audio, published as an Opus track alongside the RTSP video so
+// WebRTC viewers get it in the same session. Off unless a device is given, and
+// only ever on the live stream — clips stay video-only. Always captured at
+// 48kHz (Opus's native rate); use an ALSA plughw: device so ALSA converts if
+// the hardware runs at something else.
+struct AudioConfig {
+  std::string device;  // ALSA name, e.g. plughw:CARD=Camera,DEV=0; empty = no audio
+  int channels = 1;
+  int bitrate_kbps = 32;
+};
+
 // The control relay: lets other processes (horusctl, a future REST server)
 // send describe/set/ping to the device through capture-eye, which is the only
 // process allowed to hold the serial port. Off unless a socket path is given.
@@ -139,6 +150,7 @@ struct AppConfig {
   SerialConfig serial;
   TrackingConfig tracking;
   SinkConfig sink;
+  AudioConfig audio;
   IngressConfig ingress;
   ClippingConfig clipping;
 };
@@ -205,6 +217,12 @@ struct SinkConfigOverlay {
   std::optional<std::filesystem::path> vaapi_device;
 };
 
+struct AudioConfigOverlay {
+  std::optional<std::string> device;
+  std::optional<int> channels;
+  std::optional<int> bitrate_kbps;
+};
+
 struct IngressConfigOverlay {
   std::optional<std::filesystem::path> socket_path;
   std::optional<int> max_clients;
@@ -228,6 +246,7 @@ struct ConfigOverlay {
   SerialConfigOverlay serial;
   TrackingConfigOverlay tracking;
   SinkConfigOverlay sink;
+  AudioConfigOverlay audio;
   IngressConfigOverlay ingress;
   ClippingConfigOverlay clipping;
 };

@@ -1,5 +1,5 @@
 import { useFocusEffect } from '@react-navigation/native'
-import React, { useCallback, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Pressable,
@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { RTCView, type MediaStream } from 'react-native-webrtc'
+import { RTCView, type MediaStream, type MediaStreamTrack } from 'react-native-webrtc'
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
 import { JogPad } from '../components/JogPad'
 import { connectWhep, type WhepSession } from '../webrtc/whep'
@@ -22,6 +22,17 @@ export function StreamScreen() {
   const [controlsOpen, setControlsOpen] = useState(false)
   const session = useRef<WhepSession | undefined>()
 
+  // Starts muted so opening the stream never surprises anyone with sound.
+  // The choice outlives a reconnect: a fresh track picks up the current
+  // setting rather than resetting it.
+  const [audioTrack, setAudioTrack] = useState<MediaStreamTrack | undefined>()
+  const [muted, setMuted] = useState(true)
+  const mutedRef = useRef(muted)
+  useEffect(() => {
+    mutedRef.current = muted
+    if (audioTrack) audioTrack.enabled = !muted
+  }, [audioTrack, muted])
+
   const snap = useHorus()
   const hasAxes = Boolean(snap.state.axis_x && snap.state.axis_y)
   const hasMotion = Boolean(snap.state.motion)
@@ -31,10 +42,19 @@ export function StreamScreen() {
       let cancelled = false
       setStatus('connecting')
       setStream(undefined)
+      setAudioTrack(undefined)
 
-      connectWhep((s) => {
-        if (!cancelled) setStatus(s)
-      })
+      connectWhep(
+        (s) => {
+          if (!cancelled) setStatus(s)
+        },
+        (track) => {
+          if (cancelled) return
+          // Before the first render, so not even a moment of unmuted audio.
+          track.enabled = !mutedRef.current
+          setAudioTrack(track)
+        },
+      )
         .then((sess) => {
           if (cancelled) {
             sess.close()
@@ -52,6 +72,7 @@ export function StreamScreen() {
         session.current?.close()
         session.current = undefined
         setStream(undefined)
+        setAudioTrack(undefined)
       }
     }, [retry]),
   )
@@ -98,6 +119,20 @@ export function StreamScreen() {
         </Pressable>
         {controlsOpen && (
           <ScrollView style={styles.panelBody} contentContainerStyle={styles.panelBodyContent}>
+            <Pressable
+              style={[styles.audioRow, !audioTrack && styles.audioRowDisabled]}
+              disabled={!audioTrack}
+              onPress={() => setMuted((m) => !m)}
+            >
+              <MaterialCommunityIcons
+                name={!audioTrack ? 'microphone-off' : muted ? 'volume-off' : 'volume-high'}
+                color={audioTrack && !muted ? '#e5e5e5' : '#8a8a8a'}
+                size={22}
+              />
+              <Text style={styles.audioText}>
+                {!audioTrack ? 'No audio' : muted ? 'Audio muted' : 'Audio on'}
+              </Text>
+            </Pressable>
             <JogPad
               motionValues={snap.state.motion ?? {}}
               axisXValues={snap.state.axis_x ?? {}}
@@ -140,4 +175,18 @@ const styles = StyleSheet.create({
   panelTitle: { color: '#e5e5e5', fontSize: 13, textTransform: 'uppercase' },
   panelBody: { maxHeight: 360 },
   panelBodyContent: { paddingHorizontal: 12, paddingBottom: 16 },
+  audioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#3a3a3a',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+  audioRowDisabled: { opacity: 0.5 },
+  audioText: { color: '#e5e5e5', fontSize: 13 },
 })

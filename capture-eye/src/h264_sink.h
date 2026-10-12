@@ -17,7 +17,12 @@ namespace capture_eye {
 // milliseconds, comfortably inside a frame interval, and it means the sink never
 // retains a frame past the call — which is exactly the contract the overlay's
 // scratch buffer requires.
-[[nodiscard]] Result<FrameSink> make_h264_rtsp_sink(const SinkConfig& config, int width,
+//
+// With audio.device set, the same stream also carries the microphone as Opus
+// (see AudioTrack). A mic that fails to open is logged and the stream goes
+// out video-only: losing audio should never cost the video or the tracking.
+[[nodiscard]] Result<FrameSink> make_h264_rtsp_sink(const SinkConfig& config,
+                                                    const AudioConfig& audio, int width,
                                                     int height, int fps);
 
 } // namespace capture_eye

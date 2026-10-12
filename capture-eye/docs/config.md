@@ -124,6 +124,28 @@ Hardware (VAAPI) encode is opt-in: `hardware_encode` defaults to `false`, since
 not every machine has a usable render node. When it is turned on and the device
 or driver is unavailable, capture-eye logs the reason and falls back to libx264.
 
+### `audio`
+
+Adds a microphone to the RTSP stream as an Opus track, so WebRTC viewers get
+audio and video in one session, in sync. Off unless `device` is set, and it
+needs `sink.rtsp_url`. Clips stay video-only.
+
+| key | type | flag |
+|---|---|---|
+| `device` | string, ALSA device name | `--audio-device` |
+| `channels` | integer, 1 or 2 | — |
+| `bitrate_kbps` | integer, >0 | — |
+
+Audio is always captured at 48kHz (Opus's native rate). Use a `plughw:` device
+(e.g. `plughw:CARD=Camera,DEV=0`; card names are in `/proc/asound/cards`) so
+ALSA converts if the hardware runs at a different rate. A `hw:` device that
+can't do 48kHz is rejected at startup.
+
+A microphone that fails to open is logged (`audio: ...; continuing without
+audio`) and the stream goes out video-only, the same way a missing VAAPI device
+falls back to software encoding. Losing audio never stops video or tracking.
+A mic that's unplugged mid-run stops audio until the next restart.
+
 ### `ingress`
 
 Lets another process (horusctl, a future REST server) send `describe`/`set`/

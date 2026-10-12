@@ -9,6 +9,7 @@ extern "C" {
 #include <cstdint>
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include "config.h"
@@ -71,9 +72,17 @@ struct Encoder {
   std::int64_t last_pts = 0;
   bool started_pts = false;
 
+  // Serialises muxer writes. Only the RTSP sink ever has a second writer (the
+  // audio thread); for a clip the lock is uncontended.
+  std::mutex write_mutex;
+
   ~Encoder();
 
   [[nodiscard]] Result<void> encode(const AnnotatedFrame& annotated);
+
+  // Hands one already-rescaled packet to the muxer, under write_mutex. The
+  // muxer takes the packet's reference.
+  [[nodiscard]] Result<void> write(AVPacket* packet);
 };
 
 // Sets up hardware encoding. Returns an error rather than aborting so the caller
