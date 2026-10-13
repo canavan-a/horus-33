@@ -20,6 +20,10 @@ export interface HorusConfig {
   // foreground. The in-app updater's manual "Check for updates" button always
   // works regardless of this flag.
   autoUpdateCheck: boolean
+  // Hidden (no settings row; long-press the version line to toggle): removes
+  // every audio control and keeps playback muted. Audio is still recorded and
+  // streamed — this only changes what the app plays.
+  hideAudio: boolean
 }
 
 export const DEFAULT_CONFIG: HorusConfig = {
@@ -28,6 +32,7 @@ export const DEFAULT_CONFIG: HorusConfig = {
   cfAccessClientSecret: '',
   bgAlerts: false,
   autoUpdateCheck: true,
+  hideAudio: false,
 }
 
 const KEY = 'horus.config'

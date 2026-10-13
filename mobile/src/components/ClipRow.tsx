@@ -13,14 +13,14 @@ import {
 import Video, { type VideoRef } from 'react-native-video'
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
 import { clipThumbnailUrl, clipUrl, deleteClip } from '../api/client'
-import { accessHeaders, getConfig } from '../lib/config'
+import { accessHeaders, getConfig, subscribeConfig } from '../lib/config'
 import type { Clip } from '../lib/proto'
 
 interface Props {
   clip: Clip
   viewed: boolean
   expanded: boolean
-  onToggle: () => void
+  onToggle: (name: string) => void
   onDeleted: () => void
   // When true (and not expanded), mount a hidden paused player so ExoPlayer
   // buffers the clip's opening segment ahead of the next tap.
@@ -29,7 +29,16 @@ interface Props {
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
 
-export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted, preload }: Props) {
+// Memoized: the list re-renders on every open/preload/viewed change, but only
+// the rows whose props actually moved need to.
+export const ClipRow = React.memo(function ClipRow({
+  clip,
+  viewed,
+  expanded,
+  onToggle,
+  onDeleted,
+  preload,
+}: Props) {
   const headers = accessHeaders(getConfig())
 
   const videoRef = React.useRef<VideoRef>(null)
@@ -48,7 +57,10 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted, preload }
   // Only clips recorded with clipping.audio have a track; the toggle hides
   // for the rest. Starts muted, like the live stream.
   const [hasAudio, setHasAudio] = React.useState(false)
-  const [muted, setMuted] = React.useState(true)
+  // The hidden hideAudio setting pins it muted and drops the toggle.
+  const [mutedChoice, setMuted] = React.useState(true)
+  const hideAudio = React.useSyncExternalStore(subscribeConfig, () => getConfig().hideAudio)
+  const muted = mutedChoice || hideAudio
 
   // Hold the right half of the video to play at 2x until release.
   const [boosting, setBoosting] = React.useState(false)
@@ -139,11 +151,18 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted, preload }
 
   return (
     <View style={styles.row}>
-      <Pressable style={styles.header} onPress={onToggle} onLongPress={confirmDelete}>
+      <Pressable
+        style={styles.header}
+        onPress={() => onToggle(clip.name)}
+        onLongPress={confirmDelete}
+      >
         {clip.thumbnail ? (
           <Image
             source={{ uri: clipThumbnailUrl(clip.name), headers }}
             style={[styles.thumb, dim && styles.dim]}
+            // Decode down to the 64x40 box instead of the full-frame JPEG.
+            resizeMethod="resize"
+            fadeDuration={0}
           />
         ) : (
           <View style={[styles.thumb, styles.thumbEmpty]} />
@@ -255,7 +274,7 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted, preload }
                   color="#e5e5e5"
                 />
               </Pressable>
-              {hasAudio && (
+              {hasAudio && !hideAudio && (
                 <Pressable hitSlop={12} onPress={() => setMuted((m) => !m)}>
                   <MaterialCommunityIcons
                     name={muted ? 'volume-off' : 'volume-high'}
@@ -270,7 +289,7 @@ export function ClipRow({ clip, viewed, expanded, onToggle, onDeleted, preload }
       )}
     </View>
   )
-}
+})
 
 const styles = StyleSheet.create({
   row: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2a2a2a' },

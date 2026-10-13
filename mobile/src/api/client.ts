@@ -49,15 +49,22 @@ export const estop = () => request<{ status: string }>('/estop', { method: 'POST
 // Cloudflare Access policy the deployment scopes to /api/console/*.
 export const consoleRestart = () => request<{ status: string }>('/console/restart', { method: 'POST' })
 
-// GET /api/clips is paged server-side (max 100/req). The mobile screen shows the
-// whole list, so walk every page and concatenate.
-export const listClips = async (): Promise<Clip[]> => {
+// GET /api/clips is paged server-side (max 100/req), newest first.
+export const listClipsPage = (offset: number, limit: number) =>
+  request<ClipsPage>(`/clips?offset=${offset}&limit=${limit}`)
+
+// The first `count` clips, walking pages as needed — lets a refresh re-fetch
+// what's already been scrolled into the list without pulling the whole dir.
+export const listClips = async (count: number): Promise<ClipsPage> => {
   const clips: Clip[] = []
-  for (;;) {
-    const page = await request<ClipsPage>(`/clips?offset=${clips.length}&limit=100`)
+  let total = 0
+  while (clips.length < count) {
+    const page = await listClipsPage(clips.length, Math.min(100, count - clips.length))
     clips.push(...page.clips)
-    if (clips.length >= page.total || page.clips.length === 0) return clips
+    total = page.total
+    if (clips.length >= total || page.clips.length === 0) break
   }
+  return { clips, total }
 }
 
 export const deleteClip = (name: string) =>

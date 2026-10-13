@@ -61,8 +61,7 @@ export interface Clip {
 }
 
 // GET /api/clips is paginated server-side (server/internal/api/server.go's
-// ClipsPage). The mobile list still renders everything, so client.ts asks for a
-// large window and unwraps this.
+// ClipsPage). The mobile list pages through it as the user scrolls.
 export interface ClipsPage {
   clips: Clip[]
   total: number

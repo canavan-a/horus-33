@@ -1,30 +1,81 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import { FlatList, RefreshControl, StyleSheet, Switch, Text, View } from 'react-native'
-import { getClippingStatus, listClips, setClippingEnabled } from '../api/client'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native'
+import { getClippingStatus, listClips, listClipsPage, setClippingEnabled } from '../api/client'
 import { ClipRow } from '../components/ClipRow'
 import type { Clip } from '../lib/proto'
 import { useViewedClips } from '../lib/useViewedClips'
 import { useHorus } from '../ws/useHorus'
 
+// Clips fetched per scroll page. Small so the first screenful lands fast.
+const PAGE = 20
+
 export function ClipsScreen() {
   const snap = useHorus()
   const { isViewed, markViewed, viewedCount } = useViewedClips()
   const [clips, setClips] = useState<Clip[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [enabled, setEnabled] = useState<boolean | undefined>(snap.clipping?.enabled)
   // Single-open accordion: only one clip is expanded/playing at a time.
   const [openName, setOpenName] = useState<string>()
 
+  // Latest list for the stable callbacks below. `gen` bumps on every refresh
+  // so a page that was in flight across one is dropped instead of appended to
+  // a list it no longer lines up with.
+  const clipsRef = useRef(clips)
+  clipsRef.current = clips
+  const gen = useRef(0)
+  const fetchingMore = useRef(false)
+
+  // Re-fetch everything already scrolled in (at least one page), so a refresh
+  // never shrinks the list out from under the user.
   const refresh = useCallback(() => {
+    const g = ++gen.current
     setLoading(true)
-    listClips()
-      .then((cs) => {
+    listClips(Math.max(PAGE, clipsRef.current.length))
+      .then(({ clips: cs, total: t }) => {
+        if (g !== gen.current) return
         setClips(cs)
+        setTotal(t)
         setOpenName((cur) => (cur && cs.some((c) => c.name === cur) ? cur : undefined))
       })
       .catch(() => {})
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (g === gen.current) setLoading(false)
+      })
   }, [])
+
+  const loadMore = useCallback(() => {
+    const have = clipsRef.current.length
+    if (fetchingMore.current || have === 0 || have >= total) return
+    fetchingMore.current = true
+    const g = gen.current
+    setLoadingMore(true)
+    listClipsPage(have, PAGE)
+      .then(({ clips: page, total: t }) => {
+        if (g !== gen.current) return
+        // Offsets shift when a new clip lands mid-scroll; skip the overlap.
+        setClips((cur) => {
+          const seen = new Set(cur.map((c) => c.name))
+          return cur.concat(page.filter((c) => !seen.has(c.name)))
+        })
+        setTotal(t)
+      })
+      .catch(() => {})
+      .finally(() => {
+        fetchingMore.current = false
+        setLoadingMore(false)
+      })
+  }, [total])
 
   const handleToggle = useCallback(
     (name: string) => {
@@ -90,12 +141,26 @@ export function ClipsScreen() {
             viewed={isViewed(item.name)}
             expanded={item.name === openName}
             preload={preloadNames.includes(item.name)}
-            onToggle={() => handleToggle(item.name)}
+            onToggle={handleToggle}
             onDeleted={refresh}
           />
         )}
+        // Keep the mounted window tight: rows carry an <Image> (and possibly a
+        // <Video>), so only a couple of screens' worth live at once and new
+        // ones mount in small batches as the user scrolls.
+        initialNumToRender={8}
+        maxToRenderPerBatch={4}
+        updateCellsBatchingPeriod={50}
+        windowSize={5}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
-        ListEmptyComponent={<Text style={styles.empty}>no clips yet</Text>}
+        ListEmptyComponent={
+          loading ? null : <Text style={styles.empty}>no clips yet</Text>
+        }
+        ListFooterComponent={
+          loadingMore ? <ActivityIndicator style={styles.more} color="#8a8a8a" /> : null
+        }
       />
     </View>
   )
@@ -114,4 +179,5 @@ const styles = StyleSheet.create({
   title: { color: '#e5e5e5', fontSize: 13, maxWidth: 260 },
   rec: { color: '#dc2626', fontSize: 12, marginTop: 4 },
   empty: { color: '#8a8a8a', textAlign: 'center', marginTop: 40 },
+  more: { paddingVertical: 16 },
 })

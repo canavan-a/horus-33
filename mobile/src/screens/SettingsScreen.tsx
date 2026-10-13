@@ -135,6 +135,14 @@ export function SettingsScreen() {
     Alert.alert('Saved')
   }
 
+  // Hidden toggle: saved immediately rather than waiting on the Save button.
+  const onToggleHideAudio = async () => {
+    const next = { ...cfg, hideAudio: !cfg.hideAudio }
+    setCfg(next)
+    await saveConfig(next)
+    Alert.alert(next.hideAudio ? 'Audio hidden' : 'Audio controls restored')
+  }
+
   const onTest = async () => {
     setTestResult('…')
     try {
@@ -214,7 +222,12 @@ export function SettingsScreen() {
       )}
 
       <Text style={styles.section}>Updates</Text>
-      <TouchableOpacity onPress={checkUpdates} disabled={checking}>
+      <TouchableOpacity
+        onPress={checkUpdates}
+        onLongPress={onToggleHideAudio}
+        delayLongPress={1500}
+        disabled={checking}
+      >
         <Text style={styles.hint}>
           {checking
             ? 'Checking…'

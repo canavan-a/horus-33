@@ -1,5 +1,5 @@
 import { useFocusEffect } from '@react-navigation/native'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   ActivityIndicator,
   Pressable,
@@ -12,6 +12,7 @@ import {
 import { RTCView, type MediaStream, type MediaStreamTrack } from 'react-native-webrtc'
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
 import { JogPad } from '../components/JogPad'
+import { getConfig, subscribeConfig } from '../lib/config'
 import { connectWhep, type WhepSession } from '../webrtc/whep'
 import { useHorus } from '../ws/useHorus'
 
@@ -26,7 +27,10 @@ export function StreamScreen() {
   // The choice outlives a reconnect: a fresh track picks up the current
   // setting rather than resetting it.
   const [audioTrack, setAudioTrack] = useState<MediaStreamTrack | undefined>()
-  const [muted, setMuted] = useState(true)
+  // The hidden hideAudio setting pins it muted and drops the toggle.
+  const [mutedChoice, setMuted] = useState(true)
+  const hideAudio = useSyncExternalStore(subscribeConfig, () => getConfig().hideAudio)
+  const muted = mutedChoice || hideAudio
   const mutedRef = useRef(muted)
   useEffect(() => {
     mutedRef.current = muted
@@ -119,20 +123,22 @@ export function StreamScreen() {
         </Pressable>
         {controlsOpen && (
           <ScrollView style={styles.panelBody} contentContainerStyle={styles.panelBodyContent}>
-            <Pressable
-              style={[styles.audioRow, !audioTrack && styles.audioRowDisabled]}
-              disabled={!audioTrack}
-              onPress={() => setMuted((m) => !m)}
-            >
-              <MaterialCommunityIcons
-                name={!audioTrack ? 'microphone-off' : muted ? 'volume-off' : 'volume-high'}
-                color={audioTrack && !muted ? '#e5e5e5' : '#8a8a8a'}
-                size={22}
-              />
-              <Text style={styles.audioText}>
-                {!audioTrack ? 'No audio' : muted ? 'Audio muted' : 'Audio on'}
-              </Text>
-            </Pressable>
+            {!hideAudio && (
+              <Pressable
+                style={[styles.audioRow, !audioTrack && styles.audioRowDisabled]}
+                disabled={!audioTrack}
+                onPress={() => setMuted((m) => !m)}
+              >
+                <MaterialCommunityIcons
+                  name={!audioTrack ? 'microphone-off' : muted ? 'volume-off' : 'volume-high'}
+                  color={audioTrack && !muted ? '#e5e5e5' : '#8a8a8a'}
+                  size={22}
+                />
+                <Text style={styles.audioText}>
+                  {!audioTrack ? 'No audio' : muted ? 'Audio muted' : 'Audio on'}
+                </Text>
+              </Pressable>
+            )}
             <JogPad
               motionValues={snap.state.motion ?? {}}
               axisXValues={snap.state.axis_x ?? {}}
