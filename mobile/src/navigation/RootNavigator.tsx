@@ -1,7 +1,7 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
-import { DarkTheme, NavigationContainer } from '@react-navigation/native'
+import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
-import React, { useEffect, useState, useSyncExternalStore } from 'react'
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { ActivityIndicator, View } from 'react-native'
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
 import { getConfig, isConfigured, loadConfig, subscribeConfig } from '../lib/config'
@@ -9,30 +9,36 @@ import { ClipsScreen } from '../screens/ClipsScreen'
 import { ConsoleScreen } from '../screens/ConsoleScreen'
 import { SettingsScreen } from '../screens/SettingsScreen'
 import { StreamScreen } from '../screens/StreamScreen'
+import { type Theme, useTheme } from '../theme'
 
 const Tab = createBottomTabNavigator()
 const Stack = createNativeStackNavigator()
 
-const horusDark = {
-  ...DarkTheme,
-  colors: {
-    ...DarkTheme.colors,
-    background: '#111',
-    card: '#111',
-    text: '#e5e5e5',
-    border: '#2a2a2a',
-    primary: '#2563eb',
-  },
+function navTheme(t: Theme) {
+  const base = t.dark ? DarkTheme : DefaultTheme
+  return {
+    ...base,
+    colors: {
+      ...base.colors,
+      background: t.bg,
+      card: t.surface,
+      text: t.text,
+      border: t.border,
+      primary: t.primary,
+    },
+  }
 }
 
-const screenOpts = {
-  headerStyle: { backgroundColor: '#111' },
-  headerTintColor: '#e5e5e5',
-  tabBarStyle: { backgroundColor: '#111', borderTopColor: '#2a2a2a' },
-  tabBarActiveTintColor: '#2563eb',
-  tabBarInactiveTintColor: '#8a8a8a',
-  tabBarShowLabel: false,
-} as const
+function screenOpts(t: Theme) {
+  return {
+    headerStyle: { backgroundColor: t.surface },
+    headerTintColor: t.text,
+    tabBarStyle: { backgroundColor: t.surface, borderTopColor: t.border },
+    tabBarActiveTintColor: t.primary,
+    tabBarInactiveTintColor: t.textMuted,
+    tabBarShowLabel: false,
+  } as const
+}
 
 const TAB_ICONS: Record<string, string> = {
   Stream: 'cctv',
@@ -42,10 +48,11 @@ const TAB_ICONS: Record<string, string> = {
 }
 
 function Tabs() {
+  const theme = useTheme()
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        ...screenOpts,
+        ...screenOpts(theme),
         tabBarIcon: ({ color, size }) => (
           <MaterialCommunityIcons
             name={TAB_ICONS[route.name] ?? 'circle'}
@@ -68,6 +75,8 @@ export function RootNavigator() {
   const configured = useSyncExternalStore(subscribeConfig, () =>
     isConfigured(getConfig()),
   )
+  const theme = useTheme()
+  const nav = useMemo(() => navTheme(theme), [theme])
 
   useEffect(() => {
     loadConfig().then(() => setReady(true))
@@ -75,15 +84,15 @@ export function RootNavigator() {
 
   if (!ready) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111' }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.bg }}>
+        <ActivityIndicator color={theme.textMuted} />
       </View>
     )
   }
 
   return (
-    <NavigationContainer theme={horusDark}>
-      <Stack.Navigator screenOptions={screenOpts}>
+    <NavigationContainer theme={nav}>
+      <Stack.Navigator screenOptions={screenOpts(theme)}>
         {configured ? (
           <Stack.Screen name="Main" component={Tabs} options={{ headerShown: false }} />
         ) : (

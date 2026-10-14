@@ -3,7 +3,7 @@ import notifee, {
   AndroidImportance,
 } from '@notifee/react-native'
 import { getConfig } from '../lib/config'
-import { CH_SERVICE, NID_FGS, ensureChannels } from '../notifications/channels'
+import { CH_SERVICE, NID_FGS, ensureChannels, notifAppearance } from '../notifications/channels'
 import { onPresence, resetPresenceEdge } from '../notifications/presence'
 import { HorusSocket } from '../ws/HorusSocket'
 
@@ -34,12 +34,12 @@ export async function startMonitoring(): Promise<void> {
   await ensureChannels()
   await notifee.displayNotification({
     id: NID_FGS,
-    title: 'Horus monitoring',
+    title: 'Super Eye monitoring',
     body: 'Watching for people in frame',
     android: {
       channelId: CH_SERVICE,
       importance: AndroidImportance.LOW,
-      smallIcon: 'ic_notification',
+      ...notifAppearance(),
       ongoing: true,
       asForegroundService: true,
       foregroundServiceTypes: [AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_DATA_SYNC],

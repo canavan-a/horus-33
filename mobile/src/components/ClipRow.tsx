@@ -15,6 +15,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { clipThumbnailUrl, clipUrl, deleteClip } from '../api/client'
 import { accessHeaders, getConfig, subscribeConfig } from '../lib/config'
 import type { Clip } from '../lib/proto'
+import { type Theme, useThemedStyles } from '../theme'
 
 interface Props {
   clip: Clip
@@ -40,6 +41,7 @@ export const ClipRow = React.memo(function ClipRow({
   preload,
 }: Props) {
   const headers = accessHeaders(getConfig())
+  const styles = useThemedStyles(makeStyles)
 
   const videoRef = React.useRef<VideoRef>(null)
 
@@ -291,78 +293,82 @@ export const ClipRow = React.memo(function ClipRow({
   )
 })
 
-const styles = StyleSheet.create({
-  row: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2a2a2a' },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12 },
-  thumb: { width: 64, height: 40, borderRadius: 4, backgroundColor: '#1a1a1a' },
-  thumbEmpty: { borderWidth: 1, borderColor: '#2a2a2a' },
-  dim: { opacity: 0.4 },
-  meta: { flex: 1 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  name: { color: '#e5e5e5', fontSize: 13, flexShrink: 1 },
-  dimText: { color: '#8a8a8a' },
-  badge: {
-    color: '#8a8a8a',
-    fontSize: 10,
-    borderWidth: 1,
-    borderColor: '#3a3a3a',
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    overflow: 'hidden',
-  },
-  sub: { color: '#8a8a8a', fontSize: 11, marginTop: 2 },
-  videoWrap: { width: '100%', height: 220, backgroundColor: '#000' },
-  video: { ...StyleSheet.absoluteFillObject },
-  warm: { width: 0, height: 0 },
-  loading: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tapLayer: { ...StyleSheet.absoluteFillObject },
-  boostBadge: {
-    position: 'absolute',
-    top: 10,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  boostText: { color: '#e5e5e5', fontSize: 12, fontWeight: '600' },
-  bar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  scrubber: {
-    flex: 1,
-    height: 32,
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  track: {
-    width: '100%',
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  fill: { height: 4, borderRadius: 2, backgroundColor: '#e5e5e5' },
-  knob: {
-    position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#e5e5e5',
-    top: '50%',
-    transform: [{ translateX: -6 }, { translateY: -6 }],
-  },
-})
+function makeStyles(theme: Theme) {
+  return StyleSheet.create({
+    row: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+    header: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 12 },
+    thumb: { width: 64, height: 40, borderRadius: 4, backgroundColor: theme.surfaceAlt },
+    thumbEmpty: { borderWidth: 1, borderColor: theme.border },
+    dim: { opacity: 0.4 },
+    meta: { flex: 1 },
+    nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    name: { color: theme.text, fontSize: 13, flexShrink: 1 },
+    dimText: { color: theme.textMuted },
+    badge: {
+      color: theme.textMuted,
+      fontSize: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 4,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+      overflow: 'hidden',
+    },
+    sub: { color: theme.textMuted, fontSize: 11, marginTop: 2 },
+    // The player and its overlay controls sit on video, so they stay
+    // light-on-black in every theme.
+    videoWrap: { width: '100%', height: 220, backgroundColor: '#000' },
+    video: { ...StyleSheet.absoluteFillObject },
+    warm: { width: 0, height: 0 },
+    loading: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    tapLayer: { ...StyleSheet.absoluteFillObject },
+    boostBadge: {
+      position: 'absolute',
+      top: 10,
+      alignSelf: 'center',
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      borderRadius: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    boostText: { color: '#e5e5e5', fontSize: 12, fontWeight: '600' },
+    bar: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+    },
+    scrubber: {
+      flex: 1,
+      height: 32,
+      position: 'relative',
+      justifyContent: 'center',
+    },
+    track: {
+      width: '100%',
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: 'rgba(255,255,255,0.2)',
+    },
+    fill: { height: 4, borderRadius: 2, backgroundColor: '#e5e5e5' },
+    knob: {
+      position: 'absolute',
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: '#e5e5e5',
+      top: '50%',
+      transform: [{ translateX: -6 }, { translateY: -6 }],
+    },
+  })
+}

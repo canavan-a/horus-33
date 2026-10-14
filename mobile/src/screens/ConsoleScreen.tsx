@@ -2,11 +2,13 @@ import { useFocusEffect } from '@react-navigation/native'
 import React, { useCallback, useRef, useState } from 'react'
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { consoleRestart } from '../api/client'
+import { type Theme, useThemedStyles } from '../theme'
 import { ConsoleSocket } from '../ws/ConsoleSocket'
 
 const MAX_LINES = 2000
 
 export function ConsoleScreen() {
+  const styles = useThemedStyles(makeStyles)
   const [lines, setLines] = useState<string[]>([])
   const [connected, setConnected] = useState(false)
   const [restarting, setRestarting] = useState(false)
@@ -83,33 +85,35 @@ export function ConsoleScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#2a2a2a',
-    backgroundColor: '#111',
-  },
-  status: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  dotOn: { backgroundColor: '#22c55e' },
-  dotOff: { backgroundColor: '#4a4a4a' },
-  statusText: { color: '#8a8a8a', fontSize: 12 },
-  restart: {
-    borderWidth: 1,
-    borderColor: '#7f1d1d',
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  restartText: { color: '#f87171', fontSize: 12, fontWeight: '600' },
-  log: { flex: 1 },
-  logContent: { padding: 10 },
-  placeholder: { color: '#8a8a8a', fontSize: 12 },
-  line: { color: '#4ade80', fontSize: 11, fontFamily: 'monospace' },
-})
+function makeStyles(theme: Theme) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: theme.codeBg },
+    toolbar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+      backgroundColor: theme.surface,
+    },
+    status: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    dot: { width: 8, height: 8, borderRadius: 4 },
+    dotOn: { backgroundColor: theme.success },
+    dotOff: { backgroundColor: theme.border },
+    statusText: { color: theme.textMuted, fontSize: 12 },
+    restart: {
+      borderWidth: 1,
+      borderColor: theme.danger,
+      borderRadius: 8,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+    },
+    restartText: { color: theme.danger, fontSize: 12, fontWeight: '600' },
+    log: { flex: 1 },
+    logContent: { padding: 10 },
+    placeholder: { color: theme.textMuted, fontSize: 12 },
+    line: { color: theme.codeText, fontSize: 11, fontFamily: 'monospace' },
+  })
+}

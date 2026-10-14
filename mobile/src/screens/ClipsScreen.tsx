@@ -12,12 +12,15 @@ import { getClippingStatus, listClips, listClipsPage, setClippingEnabled } from 
 import { ClipRow } from '../components/ClipRow'
 import type { Clip } from '../lib/proto'
 import { useViewedClips } from '../lib/useViewedClips'
+import { type Theme, useTheme, useThemedStyles } from '../theme'
 import { useHorus } from '../ws/useHorus'
 
 // Clips fetched per scroll page. Small so the first screenful lands fast.
 const PAGE = 20
 
 export function ClipsScreen() {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const snap = useHorus()
   const { isViewed, markViewed, viewedCount } = useViewedClips()
   const [clips, setClips] = useState<Clip[]>([])
@@ -154,30 +157,37 @@ export function ClipsScreen() {
         windowSize={5}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
+        refreshControl={<RefreshControl
+            refreshing={loading}
+            onRefresh={refresh}
+            colors={[theme.primary]}
+            progressBackgroundColor={theme.surface}
+          />}
         ListEmptyComponent={
           loading ? null : <Text style={styles.empty}>no clips yet</Text>
         }
         ListFooterComponent={
-          loadingMore ? <ActivityIndicator style={styles.more} color="#8a8a8a" /> : null
+          loadingMore ? <ActivityIndicator style={styles.more} color={theme.textMuted} /> : null
         }
       />
     </View>
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#2a2a2a',
-  },
-  title: { color: '#e5e5e5', fontSize: 13, maxWidth: 260 },
-  rec: { color: '#dc2626', fontSize: 12, marginTop: 4 },
-  empty: { color: '#8a8a8a', textAlign: 'center', marginTop: 40 },
-  more: { paddingVertical: 16 },
-})
+function makeStyles(theme: Theme) {
+  return StyleSheet.create({
+    container: { flex: 1 },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 16,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    title: { color: theme.text, fontSize: 13, maxWidth: 260 },
+    rec: { color: theme.danger, fontSize: 12, marginTop: 4 },
+    empty: { color: theme.textMuted, textAlign: 'center', marginTop: 40 },
+    more: { paddingVertical: 16 },
+  })
+}

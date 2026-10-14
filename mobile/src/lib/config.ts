@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import type { ThemeName } from '../theme'
 
 // The app has no window.location to inherit an origin from, so the connection
 // target is stored explicitly. The deployment is a single Cloudflare tunnel
@@ -24,6 +25,8 @@ export interface HorusConfig {
   // every audio control and keeps playback muted. Audio is still recorded and
   // streamed — this only changes what the app plays.
   hideAudio: boolean
+  // Color palette (see src/theme.ts). Saved the moment it's picked.
+  themeName: ThemeName
 }
 
 export const DEFAULT_CONFIG: HorusConfig = {
@@ -33,6 +36,7 @@ export const DEFAULT_CONFIG: HorusConfig = {
   bgAlerts: false,
   autoUpdateCheck: true,
   hideAudio: false,
+  themeName: 'dark',
 }
 
 const KEY = 'horus.config'

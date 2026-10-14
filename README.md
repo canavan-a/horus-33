@@ -44,10 +44,11 @@ serial control loop, with a web UI and a terminal UI for driving it directly.
 - **[`firmware/`](firmware)** — ESP32-S3 (Arduino framework, PlatformIO)
   firmware for the gimbal itself: motor/LED controls, the device side of the
   wire protocol.
-- **[`mobile/`](mobile)** — sideloaded Android client (React Native, direct
-  APK, no Play Store). A deliberately smaller subset of `web/`: jog pad, WHEP
-  video stream, clip list/playback, and a foreground-service WebSocket that
-  raises local "person in frame" notifications in the background. See
+- **[`mobile/`](mobile)** — Super Eye, the sideloaded Android client (React
+  Native, direct APK, no Play Store). A deliberately smaller subset of
+  `web/`: jog pad, WHEP video stream, clip list/playback, and a
+  foreground-service WebSocket that raises local "person in frame"
+  notifications in the background. See
   [`mobile/README.md`](mobile/README.md).
 - **[`docs/protocol.md`](docs/protocol.md)** — the host↔device control
   protocol: newline-delimited JSON over USB CDC serial. Devices advertise

@@ -1,6 +1,6 @@
 import notifee, { AndroidImportance } from '@notifee/react-native'
 import type { PresenceEvent } from '../lib/proto'
-import { CH_ALERTS, NID_ENTER, NID_LEAVE, ensureChannels } from './channels'
+import { CH_ALERTS, NID_ENTER, NID_LEAVE, ensureChannels, notifAppearance } from './channels'
 
 // undefined until the first event after a (re)connect, so the initial-burst
 // presence snapshot re-primes the edge detector without firing a notification.
@@ -33,8 +33,7 @@ export async function onPresence(ev: PresenceEvent): Promise<void> {
       android: {
         channelId: CH_ALERTS,
         importance: AndroidImportance.HIGH,
-        smallIcon: 'ic_notification',
-        pressAction: { id: 'default' },
+        ...notifAppearance(),
         timestamp: Date.now(),
         showTimestamp: true,
       },
@@ -49,8 +48,7 @@ export async function onPresence(ev: PresenceEvent): Promise<void> {
       android: {
         channelId: CH_ALERTS,
         importance: AndroidImportance.HIGH,
-        smallIcon: 'ic_notification',
-        pressAction: { id: 'default' },
+        ...notifAppearance(),
         timestamp: Date.now(),
         showTimestamp: true,
         timeoutAfter: 60_000,

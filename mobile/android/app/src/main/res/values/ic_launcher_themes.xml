@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Per-theme launcher icons (see src/appIcon.ts and AppIconModule.kt).
+     Colors follow the palettes in src/theme.ts: background is the theme's
+     bg, the eye lines the super-chat logo lettering ramp (start/mid/end, left
+     to right), the pupil its accent (ember's brightened so
+     it reads on near-black). -->
+<resources>
+    <color name="ic_bg_light">#ffffff</color>
+    <color name="ic_eye_start_light">#265a96</color>
+    <color name="ic_eye_mid_light">#1c4f8b</color>
+    <color name="ic_eye_end_light">#3a6fae</color>
+    <color name="ic_pupil_light">#0969da</color>
+    <color name="ic_bg_dark">#0d1117</color>
+    <color name="ic_eye_start_dark">#afcdf6</color>
+    <color name="ic_eye_mid_dark">#91afda</color>
+    <color name="ic_eye_end_dark">#7292be</color>
+    <color name="ic_pupil_dark">#2f81f7</color>
+    <color name="ic_bg_slate">#1e2530</color>
+    <color name="ic_eye_start_slate">#b8d5ec</color>
+    <color name="ic_eye_mid_slate">#a0bfda</color>
+    <color name="ic_eye_end_slate">#87a8c8</color>
+    <color name="ic_pupil_slate">#5aa9e6</color>
+    <color name="ic_bg_sepia">#f4ecd8</color>
+    <color name="ic_eye_start_sepia">#6e4a1d</color>
+    <color name="ic_eye_mid_sepia">#825e2c</color>
+    <color name="ic_eye_end_sepia">#98713c</color>
+    <color name="ic_pupil_sepia">#a0651b</color>
+    <color name="ic_bg_ember">#050403</color>
+    <color name="ic_eye_start_ember">#cdab9f</color>
+    <color name="ic_eye_mid_ember">#ae8679</color>
+    <color name="ic_eye_end_ember">#8f6254</color>
+    <color name="ic_pupil_ember">#c4502e</color>
+    <!-- Below API 26 there are no adaptive icons; every theme falls back
+         to the original PNGs. -->
+    <item name="ic_launcher_light" type="mipmap">@mipmap/ic_launcher</item>
+    <item name="ic_launcher_dark" type="mipmap">@mipmap/ic_launcher</item>
+    <item name="ic_launcher_slate" type="mipmap">@mipmap/ic_launcher</item>
+    <item name="ic_launcher_sepia" type="mipmap">@mipmap/ic_launcher</item>
+    <item name="ic_launcher_ember" type="mipmap">@mipmap/ic_launcher</item>
+</resources>

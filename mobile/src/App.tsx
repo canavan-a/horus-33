@@ -3,6 +3,7 @@ import { Alert, AppState, StatusBar } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { notifySubscribe } from './api/client'
+import { useThemedAppIcon } from './appIcon'
 import {
   compareVersions,
   fetchReleases,
@@ -12,6 +13,7 @@ import { getConfig, isConfigured, loadConfig } from './lib/config'
 import { clearPresenceAlerts } from './notifications/presence'
 import { RootNavigator } from './navigation/RootNavigator'
 import { startMonitoring } from './service/PresenceService'
+import { useTheme } from './theme'
 
 // Throttle the foreground update check to once every 6h per app process.
 let lastUpdateCheck = 0
@@ -36,6 +38,9 @@ async function maybeCheckForUpdate() {
 }
 
 export default function App() {
+  const theme = useTheme()
+  useThemedAppIcon()
+
   useEffect(() => {
     loadConfig().then((c) => {
       if (!isConfigured(c)) return
@@ -61,7 +66,10 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar barStyle="light-content" backgroundColor="#111" />
+        <StatusBar
+          barStyle={theme.dark ? 'light-content' : 'dark-content'}
+          backgroundColor={theme.surface}
+        />
         <RootNavigator />
       </SafeAreaProvider>
     </GestureHandlerRootView>

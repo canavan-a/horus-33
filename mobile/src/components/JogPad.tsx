@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { estop } from '../api/client'
 import { patch } from '../lib/patch'
 import type { Values } from '../lib/proto'
+import { type Theme, useThemedStyles } from '../theme'
 
 // Ported from web/src/components/JogPad.tsx. Tuned tighter for touch: a
 // fingertip tap holds contact far longer than a mouse click, so the burst is
@@ -41,6 +42,7 @@ interface Props {
 }
 
 export function JogPad({ motionValues, axisXValues, axisYValues, hasMotion, hasAxes }: Props) {
+  const styles = useThemedStyles(makeStyles)
   const active = useRef<Partial<Record<Direction, ActiveMove>>>({})
   const mode = typeof motionValues.mode === 'string' ? motionValues.mode : 'manual'
   const manual = mode === 'manual'
@@ -126,7 +128,9 @@ export function JogPad({ motionValues, axisXValues, axisYValues, hasMotion, hasA
         !manual && styles.disabled,
       ]}
     >
-      <Text style={styles.padLabel}>{label}</Text>
+      {({ pressed }) => (
+        <Text style={[styles.padLabel, pressed && styles.onPrimary]}>{label}</Text>
+      )}
     </Pressable>
   )
 
@@ -134,7 +138,7 @@ export function JogPad({ motionValues, axisXValues, axisYValues, hasMotion, hasA
     <View style={styles.card}>
       {hasMotion && (
         <Pressable onPress={toggleMode} style={[styles.modeBtn, manual && styles.modeBtnActive]}>
-          <Text style={styles.modeBtnText}>{mode}</Text>
+          <Text style={[styles.modeBtnText, manual && styles.onPrimary]}>{mode}</Text>
         </Pressable>
       )}
 
@@ -188,6 +192,7 @@ function Btn({
   disabled?: boolean
   active?: boolean
 }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <Pressable
       onPress={onPress}
@@ -199,53 +204,57 @@ function Btn({
   )
 }
 
-const styles = StyleSheet.create({
-  card: { padding: 16, gap: 12, alignItems: 'center' },
-  muted: { color: '#8a8a8a', fontSize: 12, textAlign: 'center' },
-  grid: { width: 168, height: 168 },
-  pad: {
-    position: 'absolute',
-    width: 52,
-    height: 52,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#3a3a3a',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  padPressed: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
-  padLabel: { color: '#e5e5e5', fontSize: 18 },
-  up: { top: 0, left: 58 },
-  down: { bottom: 0, left: 58 },
-  left: { top: 58, left: 0 },
-  right: { top: 58, right: 0 },
-  disabled: { opacity: 0.4 },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'center' },
-  modeBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#3a3a3a',
-  },
-  modeBtnActive: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
-  modeBtnText: { color: '#e5e5e5', textTransform: 'capitalize' },
-  btn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#3a3a3a',
-  },
-  btnActive: { backgroundColor: '#2563eb', borderColor: '#2563eb' },
-  btnText: { color: '#e5e5e5', fontSize: 13 },
-  btnTextActive: { color: '#fff' },
-  estop: {
-    marginTop: 8,
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#dc2626',
-  },
-  estopText: { color: '#fff', fontWeight: '700', letterSpacing: 1 },
-})
+function makeStyles(theme: Theme) {
+  return StyleSheet.create({
+    card: { padding: 16, gap: 12, alignItems: 'center' },
+    muted: { color: theme.textMuted, fontSize: 12, textAlign: 'center' },
+    grid: { width: 168, height: 168 },
+    pad: {
+      position: 'absolute',
+      width: 52,
+      height: 52,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    padPressed: { backgroundColor: theme.primary, borderColor: theme.primary },
+    padLabel: { color: theme.text, fontSize: 18 },
+    up: { top: 0, left: 58 },
+    down: { bottom: 0, left: 58 },
+    left: { top: 58, left: 0 },
+    right: { top: 58, right: 0 },
+    disabled: { opacity: 0.4 },
+    row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'center' },
+    modeBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    modeBtnActive: { backgroundColor: theme.primary, borderColor: theme.primary },
+    modeBtnText: { color: theme.text, textTransform: 'capitalize' },
+    // Text sitting on a primary-filled pad or button.
+    onPrimary: { color: theme.primaryText },
+    btn: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    btnActive: { backgroundColor: theme.primary, borderColor: theme.primary },
+    btnText: { color: theme.text, fontSize: 13 },
+    btnTextActive: { color: theme.primaryText },
+    estop: {
+      marginTop: 8,
+      paddingHorizontal: 32,
+      paddingVertical: 12,
+      borderRadius: 10,
+      backgroundColor: theme.danger,
+    },
+    estopText: { color: '#ffffff', fontWeight: '700', letterSpacing: 1 },
+  })
+}

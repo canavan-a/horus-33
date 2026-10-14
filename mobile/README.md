@@ -1,6 +1,7 @@
-# Horus mobile (Android)
+# Super Eye (Android)
 
-A sideloaded (direct-APK, no Play Store) Android client for horus-33. Deliberately
+Super Eye is the sideloaded (direct-APK, no Play Store) Android client for
+horus-33; it still connects to a Horus server by hostname. Deliberately
 smaller than `web/`: jog pad + its buttons, the WHEP video stream, clips, and
 background "person in frame" notifications. No per-axis settings panel.
 
@@ -35,6 +36,19 @@ The service can only be (re)started while the app is foreground (Android 12+), s
 open the app once after a reboot to re-arm alerts. Grant the notification
 permission and add the app to the battery-optimization allowlist when prompted.
 Expected cost is that of one idle TLS socket held by an FGS (~2–5%/day).
+
+## Themes
+
+Settings → Appearance picks one of five palettes — Light, Dark (default), Slate,
+Sepia, Ember — the same set as super-chat and super-badger. It applies
+immediately and is stored with the rest of the config. Live video and clip
+players stay black in every theme.
+
+The launcher icon follows the theme: the manifest declares one
+`<activity-alias>` per theme (`IconLight`, `IconDark`, ...) and
+`AppIconModule.kt` enables exactly one. The swap only happens as the app goes
+to the background, since some launchers flicker or restart the app when its
+entry changes. Below Android 8 every alias uses the original icon.
 
 ## Develop
 

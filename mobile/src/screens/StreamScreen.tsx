@@ -13,10 +13,13 @@ import { RTCView, type MediaStream, type MediaStreamTrack } from 'react-native-w
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons'
 import { JogPad } from '../components/JogPad'
 import { getConfig, subscribeConfig } from '../lib/config'
+import { type Theme, useTheme, useThemedStyles } from '../theme'
 import { connectWhep, type WhepSession } from '../webrtc/whep'
 import { useHorus } from '../ws/useHorus'
 
 export function StreamScreen() {
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
   const [status, setStatus] = useState<'connecting' | 'live' | 'failed'>('connecting')
   const [stream, setStream] = useState<MediaStream | undefined>()
   const [retry, setRetry] = useState(0)
@@ -117,7 +120,7 @@ export function StreamScreen() {
           <Text style={styles.panelTitle}>Controls</Text>
           <MaterialCommunityIcons
             name={controlsOpen ? 'chevron-down' : 'chevron-up'}
-            color="#e5e5e5"
+            color={theme.text}
             size={22}
           />
         </Pressable>
@@ -131,7 +134,7 @@ export function StreamScreen() {
               >
                 <MaterialCommunityIcons
                   name={!audioTrack ? 'microphone-off' : muted ? 'volume-off' : 'volume-high'}
-                  color={audioTrack && !muted ? '#e5e5e5' : '#8a8a8a'}
+                  color={audioTrack && !muted ? theme.text : theme.textMuted}
                   size={22}
                 />
                 <Text style={styles.audioText}>
@@ -153,46 +156,54 @@ export function StreamScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  stage: { flex: 1 },
-  video: { flex: 1 },
-  placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  text: { color: '#8a8a8a' },
-  failBox: { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center' },
-  hint: { color: '#8a8a8a', fontSize: 12, padding: 12, textAlign: 'center' },
-  retry: {
-    borderWidth: 1,
-    borderColor: '#3a3a3a',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-    marginBottom: 12,
-  },
-  retryText: { color: '#e5e5e5' },
-  panel: { backgroundColor: '#111', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2a2a2a' },
-  panelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  panelTitle: { color: '#e5e5e5', fontSize: 13, textTransform: 'uppercase' },
-  panelBody: { maxHeight: 360 },
-  panelBodyContent: { paddingHorizontal: 12, paddingBottom: 16 },
-  audioRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: '#3a3a3a',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    marginBottom: 12,
-  },
-  audioRowDisabled: { opacity: 0.5 },
-  audioText: { color: '#e5e5e5', fontSize: 13 },
-})
+function makeStyles(theme: Theme) {
+  return StyleSheet.create({
+    // The stage frames live video, so it and everything drawn over it stay
+    // light-on-black in every theme; only the controls panel follows it.
+    container: { flex: 1, backgroundColor: '#000' },
+    stage: { flex: 1 },
+    video: { flex: 1 },
+    placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+    text: { color: '#8a8a8a' },
+    failBox: { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center' },
+    hint: { color: '#8a8a8a', fontSize: 12, padding: 12, textAlign: 'center' },
+    retry: {
+      borderWidth: 1,
+      borderColor: '#3a3a3a',
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 20,
+      marginBottom: 12,
+    },
+    retryText: { color: '#e5e5e5' },
+    panel: {
+      backgroundColor: theme.surface,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.border,
+    },
+    panelHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    panelTitle: { color: theme.text, fontSize: 13, textTransform: 'uppercase' },
+    panelBody: { maxHeight: 360 },
+    panelBodyContent: { paddingHorizontal: 12, paddingBottom: 16 },
+    audioRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      alignSelf: 'flex-start',
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      marginBottom: 12,
+    },
+    audioRowDisabled: { opacity: 0.5 },
+    audioText: { color: theme.text, fontSize: 13 },
+  })
+}

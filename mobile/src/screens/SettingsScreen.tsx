@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react'
 import {
   Alert,
   Linking,
+  Pressable,
   Platform,
   ScrollView,
   StyleSheet,
@@ -26,15 +27,26 @@ import {
 } from '../lib/appUpdater'
 import {
   DEFAULT_CONFIG,
+  getConfig,
   type HorusConfig,
   loadConfig,
   saveConfig,
 } from '../lib/config'
 import { startMonitoring, stopMonitoring } from '../service/PresenceService'
+import {
+  THEME_OPTIONS,
+  THEMES,
+  type Theme,
+  type ThemeName,
+  useTheme,
+  useThemedStyles,
+} from '../theme'
 import { reconfigureHorus } from '../ws/useHorus'
 
 export function SettingsScreen() {
   const isSetup = useRoute().name === 'Setup'
+  const theme = useTheme()
+  const styles = useThemedStyles(makeStyles)
 
   const [cfg, setCfg] = useState<HorusConfig>(DEFAULT_CONFIG)
   const [testResult, setTestResult] = useState<string>()
@@ -135,6 +147,13 @@ export function SettingsScreen() {
     Alert.alert('Saved')
   }
 
+  // Applied and saved on tap, without waiting on Save — but only the theme, so
+  // unsaved connection edits stay unsaved.
+  const onPickTheme = async (name: ThemeName) => {
+    setCfg((c) => ({ ...c, themeName: name }))
+    await saveConfig({ ...getConfig(), themeName: name })
+  }
+
   // Hidden toggle: saved immediately rather than waiting on the Save button.
   const onToggleHideAudio = async () => {
     const next = { ...cfg, hideAudio: !cfg.hideAudio }
@@ -162,7 +181,7 @@ export function SettingsScreen() {
           autoCorrect={false}
           keyboardType="url"
           placeholder="horus.example.com"
-          placeholderTextColor="#777"
+          placeholderTextColor={theme.textMuted}
           value={cfg.host}
           onChangeText={(t) => set('host', t.trim())}
         />
@@ -221,6 +240,24 @@ export function SettingsScreen() {
         </TouchableOpacity>
       )}
 
+      <Text style={styles.section}>Appearance</Text>
+      <View style={styles.themeRow}>
+        {THEME_OPTIONS.map((opt) => (
+          <Pressable
+            key={opt.name}
+            style={[styles.themeSwatch, theme.name === opt.name && styles.themeSwatchActive]}
+            onPress={() => onPickTheme(opt.name)}
+          >
+            <View style={styles.themeSwatchColors}>
+              <View style={[styles.themeSwatchDot, { backgroundColor: THEMES[opt.name].bg }]} />
+              <View style={[styles.themeSwatchDot, { backgroundColor: THEMES[opt.name].primary }]} />
+            </View>
+            <Text style={styles.themeSwatchLabel}>{opt.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={styles.hint}>The app icon follows the theme once you leave the app.</Text>
+
       <Text style={styles.section}>Updates</Text>
       <TouchableOpacity
         onPress={checkUpdates}
@@ -251,7 +288,7 @@ export function SettingsScreen() {
             <Picker
               selectedValue={selectedTag}
               onValueChange={(v) => setSelectedTag(String(v))}
-              dropdownIconColor="#e5e5e5"
+              dropdownIconColor={theme.text}
               style={styles.picker}
             >
               {releases.map((r, i) => (
@@ -292,6 +329,7 @@ export function SettingsScreen() {
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const styles = useThemedStyles(makeStyles)
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -300,45 +338,68 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: '#111' },
-  container: { padding: 16, gap: 12, backgroundColor: '#111' },
-  field: { gap: 4 },
-  label: { color: '#e5e5e5', fontSize: 13 },
-  hint: { color: '#a0a0a0', fontSize: 11 },
-  section: { color: '#8a8a8a', fontSize: 12, marginTop: 12, textTransform: 'uppercase' },
-  input: {
-    borderWidth: 1,
-    borderColor: '#4a4a4a',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    color: '#f5f5f5',
-  },
-  rowBetween: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
-  btn: {
-    backgroundColor: '#2563eb',
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  btnText: { color: '#fff', fontWeight: '600' },
-  btnDisabled: { opacity: 0.5 },
-  pickerWrap: {
-    borderWidth: 1,
-    borderColor: '#3a3a3a',
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  picker: { color: '#e5e5e5' },
-  btnOutline: {
-    borderWidth: 1,
-    borderColor: '#3a3a3a',
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  btnOutlineText: { color: '#e5e5e5' },
-  linkText: { color: '#2563eb', fontSize: 12 },
-})
+function makeStyles(theme: Theme) {
+  return StyleSheet.create({
+    scroll: { flex: 1, backgroundColor: theme.bg },
+    container: { padding: 16, gap: 12, backgroundColor: theme.bg },
+    field: { gap: 4 },
+    label: { color: theme.text, fontSize: 13 },
+    hint: { color: theme.textMuted, fontSize: 11 },
+    section: { color: theme.textMuted, fontSize: 12, marginTop: 12, textTransform: 'uppercase' },
+    input: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      color: theme.text,
+      backgroundColor: theme.surface,
+    },
+    rowBetween: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
+    btn: {
+      backgroundColor: theme.primary,
+      borderRadius: 8,
+      paddingVertical: 12,
+      alignItems: 'center',
+      marginTop: 8,
+    },
+    btnText: { color: theme.primaryText, fontWeight: '600' },
+    btnDisabled: { opacity: 0.5 },
+    pickerWrap: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 8,
+      overflow: 'hidden',
+    },
+    picker: { color: theme.text },
+    btnOutline: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 8,
+      paddingVertical: 12,
+      alignItems: 'center',
+    },
+    btnOutlineText: { color: theme.text },
+    linkText: { color: theme.primary, fontSize: 12 },
+    themeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    themeSwatch: {
+      alignItems: 'center',
+      gap: 6,
+      padding: 10,
+      borderRadius: 10,
+      borderWidth: 2,
+      borderColor: theme.border,
+      backgroundColor: theme.surface,
+    },
+    themeSwatchActive: { borderColor: theme.primary },
+    themeSwatchColors: {
+      flexDirection: 'row',
+      borderRadius: 14,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: theme.border,
+    },
+    themeSwatchDot: { width: 20, height: 28 },
+    themeSwatchLabel: { fontSize: 12, fontWeight: '600', color: theme.text },
+  })
+}
