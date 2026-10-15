@@ -152,6 +152,9 @@ export function SettingsScreen() {
   const onPickTheme = async (name: ThemeName) => {
     setCfg((c) => ({ ...c, themeName: name }))
     await saveConfig({ ...getConfig(), themeName: name })
+    // The ongoing monitoring notification took its tint when it was posted;
+    // re-post it (same id, so it updates in place) to pick up the new accent.
+    if (getConfig().bgAlerts) startMonitoring().catch(() => {})
   }
 
   // Hidden toggle: saved immediately rather than waiting on the Save button.
