@@ -93,7 +93,7 @@ export class HorusSocket {
     if (!c.host) return
 
     // RN's WebSocket accepts a headers option (3rd arg) — this is how the
-    // Cloudflare Access service token rides the upgrade request. Browsers
+    // configured auth headers ride the upgrade request. Browsers
     // can't do this; the web client never needed it.
     const headers = accessHeaders(c)
     this.ws = new WebSocket(

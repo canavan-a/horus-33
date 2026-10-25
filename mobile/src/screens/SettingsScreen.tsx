@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native'
 import { getLink, notifySubscribe } from '../api/client'
+import { HeaderList } from '../components/HeaderList'
 import {
   compareVersions,
   DowngradeBlockedError,
@@ -190,24 +191,13 @@ export function SettingsScreen() {
         />
       </Field>
 
-      <Text style={styles.section}>Cloudflare Access</Text>
-      <Field label="CF-Access-Client-Id">
-        <TextInput
-          style={styles.input}
-          autoCapitalize="none"
-          value={cfg.cfAccessClientId}
-          onChangeText={(t) => set('cfAccessClientId', t.trim())}
-        />
-      </Field>
-      <Field label="CF-Access-Client-Secret">
-        <TextInput
-          style={styles.input}
-          autoCapitalize="none"
-          secureTextEntry
-          value={cfg.cfAccessClientSecret}
-          onChangeText={(t) => set('cfAccessClientSecret', t.trim())}
-        />
-      </Field>
+      <Text style={styles.section}>Auth headers</Text>
+      <HeaderList headers={cfg.headers} onChange={(h) => set('headers', h)} />
+      <Text style={styles.hint}>
+        Sent on every request. For Cloudflare Access, add CF-Access-Client-Id and
+        CF-Access-Client-Secret from a service token. For a bearer token, add Authorization with
+        the value "Bearer …".
+      </Text>
 
       <View style={styles.rowBetween}>
         <View style={{ flex: 1 }}>

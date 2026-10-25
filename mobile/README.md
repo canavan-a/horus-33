@@ -20,8 +20,12 @@ Settings screen. Two shapes:
 - **LAN** — scheme `http`, host `192.168.1.50`, API port `8080` (or `8090` for
   `dev.sh`), media port `8889`.
 - **Remote** — scheme `https`, host = a `cloudflared` tunnel hostname pointing at
-  `horus-server`, behind Cloudflare Access. Fill in the **CF-Access-Client-Id /
-  Secret** service-token fields; they ride every REST call and the WS upgrade.
+  `horus-server`, behind Cloudflare Access. Add **CF-Access-Client-Id** and
+  **CF-Access-Client-Secret** from a service token under Auth headers. Auth
+  headers takes any number of name/value pairs (e.g. `Authorization: Bearer …`
+  for another proxy); they ride every REST call, WHEP request and WS upgrade.
+  Configs saved before Auth headers existed carry their Cloudflare token over
+  as those two headers.
   Live video then needs a TURN server advertised by MediaMTX (media can't cross
   the Cloudflare HTTP proxy); control, clips and notifications work regardless.
 

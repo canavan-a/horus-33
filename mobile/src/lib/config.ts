@@ -1,6 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { ThemeName } from '../theme'
 
+// A header sent on every request, e.g. a Cloudflare Access service token or a
+// bearer token for some other proxy.
+export interface AuthHeader {
+  name: string
+  value: string
+}
+
 // The app has no window.location to inherit an origin from, so the connection
 // target is stored explicitly. The deployment is a single Cloudflare tunnel
 // host served over HTTPS on 443: horus-server's REST/WS API lives under /api and
@@ -10,10 +17,10 @@ import type { ThemeName } from '../theme'
 export interface HorusConfig {
   // Tunnel hostname, e.g. 'horus.example.com'. No scheme, no port.
   host: string
-  // Cloudflare Access service token. Sent as CF-Access-Client-Id /
-  // CF-Access-Client-Secret on every REST call and on the WS upgrade.
-  cfAccessClientId: string
-  cfAccessClientSecret: string
+  // Any number of auth headers (e.g. a Cloudflare Access service token), sent
+  // on every REST call, WHEP request and WS upgrade. Rows with a blank name
+  // are ignored.
+  headers: AuthHeader[]
   // Whether the background foreground-service holds a WS open for presence
   // notifications.
   bgAlerts: boolean
@@ -31,8 +38,7 @@ export interface HorusConfig {
 
 export const DEFAULT_CONFIG: HorusConfig = {
   host: '',
-  cfAccessClientId: '',
-  cfAccessClientSecret: '',
+  headers: [],
   bgAlerts: false,
   autoUpdateCheck: true,
   hideAudio: false,
@@ -70,13 +76,33 @@ export async function loadConfig(): Promise<HorusConfig> {
   try {
     const raw = await AsyncStorage.getItem(KEY)
     if (raw) {
-      cache = { ...DEFAULT_CONFIG, ...(JSON.parse(raw) as Partial<HorusConfig>) }
+      const { cfAccessClientId, cfAccessClientSecret, ...saved } = JSON.parse(raw) as Partial<HorusConfig> &
+        LegacyConfig
+      const migrated = !Array.isArray(saved.headers)
+      cache = { ...DEFAULT_CONFIG, ...saved }
+      if (migrated) cache.headers = legacyHeaders({ cfAccessClientId, cfAccessClientSecret })
       notify()
+      if (migrated) await AsyncStorage.setItem(KEY, JSON.stringify(cache))
     }
   } catch {
     // Corrupt or unavailable storage — fall back to defaults.
   }
   return cache
+}
+
+// Before custom headers, the Cloudflare Access service token had fields of
+// its own. A config saved then carries them over as two ordinary headers.
+interface LegacyConfig {
+  cfAccessClientId?: string
+  cfAccessClientSecret?: string
+}
+
+function legacyHeaders(c: LegacyConfig): AuthHeader[] {
+  if (!c.cfAccessClientId || !c.cfAccessClientSecret) return []
+  return [
+    { name: 'CF-Access-Client-Id', value: c.cfAccessClientId },
+    { name: 'CF-Access-Client-Secret', value: c.cfAccessClientSecret },
+  ]
 }
 
 export async function saveConfig(next: HorusConfig): Promise<void> {
@@ -108,11 +134,12 @@ export function whepUrl(c: HorusConfig): string {
   return `https://${c.host}/whep/eye`
 }
 
-// Headers for Cloudflare Access, or {} when no token is configured.
+// The configured auth headers, or {} when there are none.
 export function accessHeaders(c: HorusConfig): Record<string, string> {
-  if (!c.cfAccessClientId || !c.cfAccessClientSecret) return {}
-  return {
-    'CF-Access-Client-Id': c.cfAccessClientId,
-    'CF-Access-Client-Secret': c.cfAccessClientSecret,
+  const out: Record<string, string> = {}
+  for (const h of c.headers) {
+    const name = h.name.trim()
+    if (name) out[name] = h.value.trim()
   }
+  return out
 }
